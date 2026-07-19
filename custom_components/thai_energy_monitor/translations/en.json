@@ -24,6 +24,9 @@
         "title": "Thailand Energy Parameters",
         "description": "Update active fuel adjustment charge (Ft), solar sell-back rate, BESS capacity, and MEA points setup.",
         "data": {
+          "grid_import_sensor": "Grid Import Energy Sensor (kWh)",
+          "grid_export_sensor": "Grid Export Energy Sensor (kWh)",
+          "solar_prod_sensor": "Solar Production Energy Sensor (kWh)",
           "tariff_category": "Tariff Category",
           "ft_rate": "Fuel Adjustment Charge (Ft) [THB/kWh]",
           "solar_sellback_rate": "Solar Sell-back Rate [THB/kWh]",
