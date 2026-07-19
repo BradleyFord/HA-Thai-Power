@@ -178,104 +178,67 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
 
         current_data = current_entry.data
 
-        # Build schema dictionary dynamically to prevent None validation errors on optional fields
-        schema_dict = {}
-
-        # Grid Import Sensor (Required)
-        import_default = current_data.get(CONF_GRID_IMPORT_SENSOR)
-        if import_default:
-            schema_dict[vol.Required(CONF_GRID_IMPORT_SENSOR, default=import_default)] = EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            )
-        else:
-            schema_dict[vol.Required(CONF_GRID_IMPORT_SENSOR)] = EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            )
-
-        # Grid Export Sensor (Optional)
-        export_default = current_data.get(CONF_GRID_EXPORT_SENSOR)
-        if export_default:
-            schema_dict[vol.Optional(CONF_GRID_EXPORT_SENSOR, default=export_default)] = EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            )
-        else:
-            schema_dict[vol.Optional(CONF_GRID_EXPORT_SENSOR)] = EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            )
-
-        # Solar Production Sensor (Required)
-        solar_default = current_data.get(CONF_SOLAR_PROD_SENSOR)
-        if solar_default:
-            schema_dict[vol.Required(CONF_SOLAR_PROD_SENSOR, default=solar_default)] = EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            )
-        else:
-            schema_dict[vol.Required(CONF_SOLAR_PROD_SENSOR)] = EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            )
-
-        # Tariff Category (Required)
-        schema_dict[vol.Required(
-            CONF_TARIFF_CATEGORY,
-            default=current_data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2),
-        )] = SelectSelector(
-            SelectSelectorConfig(
-                options=TARIFF_CATEGORIES,
-                mode=SelectSelectorMode.DROPDOWN,
-            )
+        # Define schema without default values (pre-populated via add_suggested_values_to_schema)
+        options_schema = vol.Schema(
+            {
+                vol.Required(CONF_GRID_IMPORT_SENSOR): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_GRID_EXPORT_SENSOR): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(CONF_SOLAR_PROD_SENSOR): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(CONF_TARIFF_CATEGORY): SelectSelector(
+                    SelectSelectorConfig(
+                        options=TARIFF_CATEGORIES,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(CONF_FT_RATE): NumberSelector(
+                    NumberSelectorConfig(
+                        min=-2.0,
+                        max=5.0,
+                        step=0.0001,
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(CONF_SOLAR_SELLBACK_RATE): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0.0,
+                        max=10.0,
+                        step=0.01,
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(CONF_BESS_CAPACITY_KWH): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0.0,
+                        max=100.0,
+                        step=0.5,
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(CONF_MEA_EBILL): bool,
+                vol.Required(CONF_MEA_EPAYMENT): bool,
+            }
         )
 
-        # Ft Rate (Required)
-        schema_dict[vol.Required(
-            CONF_FT_RATE,
-            default=current_data.get(CONF_FT_RATE, DEFAULT_FT_RATE),
-        )] = NumberSelector(
-            NumberSelectorConfig(
-                min=-2.0,
-                max=5.0,
-                step=0.0001,
-                mode=NumberSelectorMode.BOX,
-            )
+        # Merge with current values (including options) to prepopulate form safely
+        suggested_values = {
+            CONF_GRID_IMPORT_SENSOR: current_data.get(CONF_GRID_IMPORT_SENSOR),
+            CONF_GRID_EXPORT_SENSOR: current_data.get(CONF_GRID_EXPORT_SENSOR),
+            CONF_SOLAR_PROD_SENSOR: current_data.get(CONF_SOLAR_PROD_SENSOR),
+            CONF_TARIFF_CATEGORY: current_data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2),
+            CONF_FT_RATE: float(current_data.get(CONF_FT_RATE, DEFAULT_FT_RATE)),
+            CONF_SOLAR_SELLBACK_RATE: float(current_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK)),
+            CONF_BESS_CAPACITY_KWH: float(current_data.get(CONF_BESS_CAPACITY_KWH, 5.0)),
+            CONF_MEA_EBILL: bool(current_data.get(CONF_MEA_EBILL, False)),
+            CONF_MEA_EPAYMENT: bool(current_data.get(CONF_MEA_EPAYMENT, False)),
+        }
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(options_schema, suggested_values),
         )
-
-        # Solar Sellback Rate (Required)
-        schema_dict[vol.Required(
-            CONF_SOLAR_SELLBACK_RATE,
-            default=current_data.get(
-                CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK
-            ),
-        )] = NumberSelector(
-            NumberSelectorConfig(
-                min=0.0,
-                max=10.0,
-                step=0.01,
-                mode=NumberSelectorMode.BOX,
-            )
-        )
-
-        # BESS Capacity (Required)
-        schema_dict[vol.Required(
-            CONF_BESS_CAPACITY_KWH,
-            default=current_data.get(CONF_BESS_CAPACITY_KWH, 5.0),
-        )] = NumberSelector(
-            NumberSelectorConfig(
-                min=0.0,
-                max=100.0,
-                step=0.5,
-                mode=NumberSelectorMode.BOX,
-            )
-        )
-
-        # MEA e-Bill (Required)
-        schema_dict[vol.Required(
-            CONF_MEA_EBILL,
-            default=current_data.get(CONF_MEA_EBILL, False),
-        )] = bool
-
-        # MEA e-Payment (Required)
-        schema_dict[vol.Required(
-            CONF_MEA_EPAYMENT,
-            default=current_data.get(CONF_MEA_EPAYMENT, False),
-        )] = bool
-
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))
