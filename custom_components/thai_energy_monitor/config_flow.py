@@ -14,15 +14,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.selector import (
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
-    SelectSelector,
-    SelectSelectorConfig,
-    SelectSelectorMode,
-    selector,
-)
+from homeassistant.helpers.selector import selector
 
 from .const import (
     CONF_BESS_CAPACITY_KWH,
@@ -91,30 +83,13 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(
                     CONF_UTILITY_PROVIDER, default=PROVIDER_MEA
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=UTILITY_PROVIDERS,
-                        mode=SelectSelectorMode.DROPDOWN,
-                    )
-                ),
+                ): selector({"select": {"options": UTILITY_PROVIDERS, "mode": "dropdown"}}),
                 vol.Required(
                     CONF_TARIFF_CATEGORY, default=TARIFF_1_2
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=TARIFF_CATEGORIES,
-                        mode=SelectSelectorMode.DROPDOWN,
-                    )
-                ),
+                ): selector({"select": {"options": TARIFF_CATEGORIES, "mode": "dropdown"}}),
                 vol.Required(
                     CONF_BILLING_DAY, default=1
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=1,
-                        max=31,
-                        step=1,
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
+                ): selector({"number": {"min": 1, "max": 31, "step": 1, "mode": "box"}}),
                 vol.Required(CONF_GRID_IMPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(CONF_SOLAR_PROD_SENSOR): selector({"entity": {"domain": "sensor"}}),
@@ -137,10 +112,10 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Thailand Energy & Solar Monitor."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow handler."""
-        if config_entry is not None:
-            self._config_entry = config_entry
+        super().__init__(config_entry)
+        self._config_entry = config_entry
 
     @property
     def config_entry(self) -> config_entries.ConfigEntry:
@@ -169,46 +144,46 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             await self.hass.config_entries.async_reload(current_entry.entry_id)
             return self.async_create_entry(title="", data={})
 
-        current_data = current_entry.data
+        current_data = {**current_entry.data, **current_entry.options}
 
-        # Define schema without default values (pre-populated via add_suggested_values_to_schema)
+        # Define schema using unified serializable selector helpers only
         options_schema = vol.Schema(
             {
                 vol.Required(CONF_GRID_IMPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(CONF_SOLAR_PROD_SENSOR): selector({"entity": {"domain": "sensor"}}),
-                vol.Required(CONF_TARIFF_CATEGORY): SelectSelector(
-                    SelectSelectorConfig(
-                        options=TARIFF_CATEGORIES,
-                        mode=SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Required(CONF_FT_RATE): NumberSelector(
-                    NumberSelectorConfig(
-                        min=-2.0,
-                        max=5.0,
-                        step=0.0001,
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(CONF_SOLAR_SELLBACK_RATE): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0.0,
-                        max=10.0,
-                        step=0.01,
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(CONF_BESS_CAPACITY_KWH): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0.0,
-                        max=100.0,
-                        step=0.5,
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(CONF_MEA_EBILL): bool,
-                vol.Required(CONF_MEA_EPAYMENT): bool,
+                vol.Required(CONF_TARIFF_CATEGORY): selector({
+                    "select": {
+                        "options": TARIFF_CATEGORIES,
+                        "mode": "dropdown",
+                    }
+                }),
+                vol.Required(CONF_FT_RATE): selector({
+                    "number": {
+                        "min": -2.0,
+                        "max": 5.0,
+                        "step": 0.0001,
+                        "mode": "box",
+                    }
+                }),
+                vol.Required(CONF_SOLAR_SELLBACK_RATE): selector({
+                    "number": {
+                        "min": 0.0,
+                        "max": 10.0,
+                        "step": 0.01,
+                        "mode": "box",
+                    }
+                }),
+                vol.Required(CONF_BESS_CAPACITY_KWH): selector({
+                    "number": {
+                        "min": 0.0,
+                        "max": 100.0,
+                        "step": 0.5,
+                        "mode": "box",
+                    }
+                }),
+                vol.Required(CONF_MEA_EBILL): selector({"boolean": {}}),
+                vol.Required(CONF_MEA_EPAYMENT): selector({"boolean": {}}),
             }
         )
 
