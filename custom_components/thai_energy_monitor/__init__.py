@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import voluptuous as vol
 
-from homeassistant.components.frontend import async_register_panel, async_remove_panel
+from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -48,12 +48,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         points_delta = int(call.data["points_delta"])
         coordinator.async_adjust_mea_points(points_delta)
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_ADJUST_MEA_POINTS,
-        async_handle_adjust_mea_points,
-        schema=SERVICE_SCHEMA_ADJUST_MEA_POINTS,
-    )
+    if not hass.services.has_service(DOMAIN, SERVICE_ADJUST_MEA_POINTS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_ADJUST_MEA_POINTS,
+            async_handle_adjust_mea_points,
+            schema=SERVICE_SCHEMA_ADJUST_MEA_POINTS,
+        )
 
     # --- Modern Asynchronous Frontend Registration ---
     frontend_path = hass.config.path("custom_components/thai_energy_monitor/frontend")
@@ -66,21 +67,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     ])
 
-    async_register_panel(
-        hass,
-        frontend_url_path="thai-energy-dashboard",
-        require_admin=False,
-        sidebar_title="Thai Power Cost",
-        sidebar_icon="mdi:transmission-tower",
-        update=True,
-        config={"router": None},
-        custom_panel_config={
-            "name": "thai-energy-panel",
-            "embed_iframe": False,
-            "trust_external": False,
-            "js_url": "/thai_energy_ui/panel.js",
-        },
-    )
+    # Register custom sidebar panel safely using frontend module
+    try:
+        frontend.async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title="Thai Power Cost",
+            sidebar_icon="mdi:transmission-tower",
+            frontend_url_path="thai-energy-dashboard",
+            config={
+                "_panel_custom": {
+                    "name": "thai-energy-panel",
+                    "embed_iframe": False,
+                    "trust_external": False,
+                    "js_url": "/thai_energy_ui/panel.js",
+                }
+            },
+            require_admin=False,
+            update=True,
+        )
+    except Exception as err:
+        _LOGGER.warning("Could not register custom sidebar panel: %s", err)
 
     return True
 
@@ -92,7 +99,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
         if not hass.data[DOMAIN]:
-            async_remove_panel(hass, "thai-energy-dashboard")
+            try:
+                frontend.async_remove_panel(hass, "thai-energy-dashboard")
+            except Exception:
+                pass
             hass.services.async_remove(DOMAIN, SERVICE_ADJUST_MEA_POINTS)
 
     return unload_ok
