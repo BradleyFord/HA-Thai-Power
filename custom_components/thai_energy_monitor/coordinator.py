@@ -394,45 +394,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (ValueError, TypeError):
             curr_solar = 0.0
 
-        # Baseline Subtraction for Total Increasing Hardware Meters
+        # Billing Cycle Baselines
         billing_start_dt = self._get_billing_start_datetime(now)
 
-        if self.import_baseline_kwh is None:
-            fetched_base = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
-            if fetched_base is not None and curr_import >= fetched_base:
-                self.import_baseline_kwh = fetched_base
-            else:
-                self.import_baseline_kwh = max(0.0, curr_import - 15.0)
-
-        if self.solar_baseline_kwh is None:
-            fetched_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, billing_start_dt)
-            if fetched_solar is not None and curr_solar >= fetched_solar:
-                self.solar_baseline_kwh = fetched_solar
-            else:
-                self.solar_baseline_kwh = max(0.0, curr_solar - 10.0)
-
-        if self.export_baseline_kwh is None:
-            fetched_export = await self._async_get_sensor_baseline(self.export_sensor_id, billing_start_dt)
-            if fetched_export is not None and curr_export >= fetched_export:
-                self.export_baseline_kwh = fetched_export
-            else:
-                self.export_baseline_kwh = max(0.0, curr_export - 2.0)
-
-        # Accurate Monthly Billing Energy = Current Meter Reading - Baseline Reading at Month Start
-        if curr_import >= (self.import_baseline_kwh or 0.0):
-            self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
-        
-        if curr_solar >= (self.solar_baseline_kwh or 0.0):
-            self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
-
-        if curr_export >= (self.export_baseline_kwh or 0.0):
-            self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
-
-        self.lifetime_import_kwh = curr_import
-        self.lifetime_export_kwh = curr_export
-        self.lifetime_solar_kwh = curr_solar
-
-        # Estimate TOU Peak / Off-Peak split based on active window ratio
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
             bkk_now = now.astimezone(bkk_tz)
@@ -441,6 +405,50 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         current_day = min(30, max(1, bkk_now.day))
 
+        # Safe Baseline Estimation to avoid locking at 0.0 during initialization
+        if self.import_baseline_kwh is None and curr_import > 0.0:
+            fetched_base = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
+            if fetched_base is not None and fetched_base > 0.0:
+                self.import_baseline_kwh = fetched_base
+            else:
+                self.import_baseline_kwh = max(0.0, curr_import - (current_day * 33.33))
+
+        if self.solar_baseline_kwh is None and curr_solar > 0.0:
+            fetched_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, billing_start_dt)
+            if fetched_solar is not None and fetched_solar > 0.0:
+                self.solar_baseline_kwh = fetched_solar
+            else:
+                self.solar_baseline_kwh = max(0.0, curr_solar - (current_day * 15.0))
+
+        if self.export_baseline_kwh is None and curr_export > 0.0:
+            fetched_export = await self._async_get_sensor_baseline(self.export_sensor_id, billing_start_dt)
+            if fetched_export is not None and fetched_export > 0.0:
+                self.export_baseline_kwh = fetched_export
+            else:
+                self.export_baseline_kwh = max(0.0, curr_export - (current_day * 5.0))
+
+        # Calculate active monthly usage by subtracting baselines
+        if curr_import >= (self.import_baseline_kwh or 0.0) and (self.import_baseline_kwh or 0.0) > 0.0:
+            self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
+        else:
+            # Fallback estimation if baseline subtraction isn't populated yet
+            self.monthly_import_kwh = min(curr_import, current_day * 33.33)
+
+        if curr_solar >= (self.solar_baseline_kwh or 0.0) and (self.solar_baseline_kwh or 0.0) > 0.0:
+            self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
+        else:
+            self.monthly_solar_kwh = min(curr_solar, current_day * 15.0)
+
+        if curr_export >= (self.export_baseline_kwh or 0.0) and (self.export_baseline_kwh or 0.0) > 0.0:
+            self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
+        else:
+            self.monthly_export_kwh = min(curr_export, current_day * 5.0)
+
+        self.lifetime_import_kwh = curr_import
+        self.lifetime_export_kwh = curr_export
+        self.lifetime_solar_kwh = curr_solar
+
+        # Split peak/off-peak consumption
         self.monthly_tou_offpeak_import_kwh = self.monthly_import_kwh * 0.60
         self.monthly_tou_peak_import_kwh = self.monthly_import_kwh * 0.40
 
@@ -465,7 +473,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lifetime_solar_revenue_thb = self.lifetime_export_kwh * sellback_rate
         lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + lifetime_solar_revenue_thb
 
-        # Project full 30-day bill based on current daily run-rate
+        # Project 30-day monthly usage based on active run-rate
         projected_monthly_import = (self.monthly_import_kwh / current_day) * 30.0
 
         monthly_ft_charge = projected_monthly_import * ft_rate
