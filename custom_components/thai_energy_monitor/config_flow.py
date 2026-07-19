@@ -68,6 +68,10 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             self._abort_if_unique_id_configured()
 
+            # Default grid export sensor to grid import sensor if not specified (bidirectional sensor)
+            grid_export = user_input.get(CONF_GRID_EXPORT_SENSOR) or user_input[CONF_GRID_IMPORT_SENSOR]
+            user_input[CONF_GRID_EXPORT_SENSOR] = grid_export
+
             # Assign initial default financial rates if not provided
             data = {
                 **user_input,
@@ -115,7 +119,7 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_GRID_IMPORT_SENSOR): EntitySelector(
                     EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Required(CONF_GRID_EXPORT_SENSOR): EntitySelector(
+                vol.Optional(CONF_GRID_EXPORT_SENSOR): EntitySelector(
                     EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Required(CONF_SOLAR_PROD_SENSOR): EntitySelector(

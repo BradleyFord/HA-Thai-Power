@@ -2,7 +2,8 @@
 
 Performs asynchronous numerical integration (Riemann sums), tariff calculation,
 phantom predictive tariff comparison, BESS simulation, MEA gamification points,
-monthly billing cycle auto-resets, and HA Energy Dashboard compatibility.
+monthly billing cycle auto-resets, HA Energy Dashboard compatibility, and single
+bidirectional net grid sensor support (positive for import, negative for export).
 """
 
 from __future__ import annotations
@@ -79,8 +80,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Source Sensor Entity IDs
         self.import_sensor_id: str = entry.data[CONF_GRID_IMPORT_SENSOR]
-        self.export_sensor_id: str = entry.data[CONF_GRID_EXPORT_SENSOR]
+        self.export_sensor_id: str = entry.data.get(CONF_GRID_EXPORT_SENSOR, self.import_sensor_id)
         self.solar_sensor_id: str = entry.data[CONF_SOLAR_PROD_SENSOR]
+
+        # Flag indicating single bidirectional net grid sensor (import == export sensor)
+        self.is_single_bidirectional_sensor: bool = (self.import_sensor_id == self.export_sensor_id)
 
         # Active Tariff Category (May auto-transition from 1.1 -> 1.2)
         self.active_tariff_category: str = entry.data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2)
@@ -89,6 +93,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.th_holidays = holidays.TH()
 
         # Last raw sensor readings for delta processing
+        self._last_raw_grid_val: float | None = None
         self._last_import_val: float | None = None
         self._last_export_val: float | None = None
         self._last_solar_val: float | None = None
@@ -137,11 +142,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_setup_listeners(self) -> None:
         """Subscribe to source sensor state change events asynchronously."""
-        source_entities = [
+        source_entities = list(set([
             self.import_sensor_id,
             self.export_sensor_id,
             self.solar_sensor_id,
-        ]
+        ]))
         self.async_add_listener(self._async_handle_update)
         async_track_state_change_event(
             self.hass, source_entities, self._async_sensor_state_listener
@@ -280,7 +285,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Read source sensor states
         import_state = self.hass.states.get(self.import_sensor_id)
-        export_state = self.hass.states.get(self.export_sensor_id)
+        export_state = self.hass.states.get(self.export_sensor_id) if not self.is_single_bidirectional_sensor else import_state
         solar_state = self.hass.states.get(self.solar_sensor_id)
 
         # Grid Outage Tracking
@@ -298,33 +303,62 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.total_outage_seconds += duration
                     self.outage_start_time = None
 
-        # Parse numeric sensor values with NaN / Unknown filtering
+        delta_import = 0.0
+        delta_export = 0.0
+
+        if self.is_single_bidirectional_sensor:
+            # Single bidirectional grid sensor (Positive = Import, Negative = Export)
+            try:
+                raw_grid = float(import_state.state) if import_state and import_state.state not in ("unavailable", "unknown") else None
+            except (ValueError, TypeError):
+                raw_grid = None
+
+            if raw_grid is not None and not math.isnan(raw_grid):
+                if self._last_raw_grid_val is not None:
+                    grid_delta = raw_grid - self._last_raw_grid_val
+                    if grid_delta > 0:
+                        delta_import = grid_delta
+                    elif grid_delta < 0:
+                        delta_export = abs(grid_delta)
+                self._last_raw_grid_val = raw_grid
+
+                # Also handle signed instantaneous reading
+                curr_import = max(0.0, raw_grid)
+                curr_export = abs(min(0.0, raw_grid))
+            else:
+                curr_import = self._last_import_val or 0.0
+                curr_export = self._last_export_val or 0.0
+
+        else:
+            # Separate distinct import and export sensors
+            try:
+                curr_import = float(import_state.state) if import_state and import_state.state not in ("unavailable", "unknown") else None
+                curr_export = float(export_state.state) if export_state and export_state.state not in ("unavailable", "unknown") else None
+            except (ValueError, TypeError):
+                curr_import, curr_export = None, None
+
+            if curr_import is None or math.isnan(curr_import) or curr_import < 0:
+                curr_import = self._last_import_val or 0.0
+
+            if curr_export is None or math.isnan(curr_export) or curr_export < 0:
+                curr_export = self._last_export_val or 0.0
+
+            if self._last_import_val is not None and curr_import >= self._last_import_val:
+                delta_import = curr_import - self._last_import_val
+            self._last_import_val = curr_import
+
+            if self._last_export_val is not None and curr_export >= self._last_export_val:
+                delta_export = curr_export - self._last_export_val
+            self._last_export_val = curr_export
+
+        # Solar Sensor Reading
         try:
-            curr_import = float(import_state.state) if import_state and import_state.state not in ("unavailable", "unknown") else None
-            curr_export = float(export_state.state) if export_state and export_state.state not in ("unavailable", "unknown") else None
             curr_solar = float(solar_state.state) if solar_state and solar_state.state not in ("unavailable", "unknown") else None
         except (ValueError, TypeError):
-            curr_import, curr_export, curr_solar = None, None, None
-
-        if curr_import is None or math.isnan(curr_import) or curr_import < 0:
-            curr_import = self._last_import_val or 0.0
-
-        if curr_export is None or math.isnan(curr_export) or curr_export < 0:
-            curr_export = self._last_export_val or 0.0
+            curr_solar = None
 
         if curr_solar is None or math.isnan(curr_solar) or curr_solar < 0:
             curr_solar = self._last_solar_val or 0.0
-
-        # Calculate deltas since last update cycle
-        delta_import = 0.0
-        if self._last_import_val is not None and curr_import >= self._last_import_val:
-            delta_import = curr_import - self._last_import_val
-        self._last_import_val = curr_import
-
-        delta_export = 0.0
-        if self._last_export_val is not None and curr_export >= self._last_export_val:
-            delta_export = curr_export - self._last_export_val
-        self._last_export_val = curr_export
 
         delta_solar = 0.0
         if self._last_solar_val is not None and curr_solar >= self._last_solar_val:
