@@ -159,10 +159,14 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage options step for modifying dynamic financial variables."""
+        """Manage options step for modifying dynamic financial and entity variables."""
         current_entry = self.config_entry
 
         if user_input is not None:
+            # Default grid export sensor to grid import sensor if not specified (bidirectional sensor)
+            grid_export = user_input.get(CONF_GRID_EXPORT_SENSOR) or user_input[CONF_GRID_IMPORT_SENSOR]
+            user_input[CONF_GRID_EXPORT_SENSOR] = grid_export
+
             # Update base entry data dictionary directly
             new_data = {**current_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(
@@ -174,9 +178,27 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
 
         current_data = current_entry.data
 
-        # Options schema allowing user updates
+        # Options schema allowing user updates for all variables including source entities
         options_schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_GRID_IMPORT_SENSOR,
+                    default=current_data.get(CONF_GRID_IMPORT_SENSOR),
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(
+                    CONF_GRID_EXPORT_SENSOR,
+                    default=current_data.get(CONF_GRID_EXPORT_SENSOR),
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(
+                    CONF_SOLAR_PROD_SENSOR,
+                    default=current_data.get(CONF_SOLAR_PROD_SENSOR),
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
                 vol.Required(
                     CONF_TARIFF_CATEGORY,
                     default=current_data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2),
