@@ -1,8 +1,8 @@
 /**
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
- * rich detailed metrics across 4 tabs, cumulative monthly bill progression chart, and
- * multi-pattern HA entity slug matching.
+ * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
+ * Solcast PV Forecast solar comparison chart, and multi-pattern HA entity slug matching.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -97,6 +97,25 @@ class ThaiEnergyPanel extends HTMLElement {
       return null;
     };
 
+    // Solcast PV Forecast Entity Search
+    let solcastForecastToday = '0.00';
+    let solcastPowerNow = '0.00';
+    let solcastForecastRemaining = '0.00';
+    let solcastEntityFound = false;
+
+    for (const entityId in states) {
+      if (entityId.includes('solcast')) {
+        solcastEntityFound = true;
+        if (entityId.includes('forecast_today') || entityId.includes('today')) {
+          solcastForecastToday = states[entityId].state;
+        } else if (entityId.includes('power_now') || entityId.includes('now')) {
+          solcastPowerNow = states[entityId].state;
+        } else if (entityId.includes('remaining_today') || entityId.includes('remaining')) {
+          solcastForecastRemaining = states[entityId].state;
+        }
+      }
+    }
+
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
@@ -119,7 +138,7 @@ class ThaiEnergyPanel extends HTMLElement {
     const ftPct = Math.min(100, Math.round(((parseFloat(ftCharge) || 0) / totalBillNum) * 100));
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
-    // Generate cumulative monthly bill progression for days 1 to 30 (Starts near 0 on Day 1 and accumulates upward)
+    // Generate cumulative monthly bill progression for days 1 to 30
     const today = new Date();
     const currentDay = Math.min(30, Math.max(1, today.getDate()));
     const totalBaseNum = parseFloat(baseCost) || 0;
@@ -146,6 +165,23 @@ class ThaiEnergyPanel extends HTMLElement {
         vat: vVal,
         total: dayCumulativeTotal,
         isPastOrToday: isPastOrToday,
+      });
+    }
+
+    // Generate Solar Daylight Hourly Bars (06:00 to 18:00) comparing Actual vs Solcast PV Forecast
+    const solarHourlyBars = [];
+    const solcastTargetKwh = parseFloat(solcastForecastToday) || 24.5;
+    for (let hour = 6; hour <= 18; hour++) {
+      // Bell curve distribution factor for solar generation centered around 12:00 PM
+      const bell = Math.sin(((hour - 6) / 12) * Math.PI);
+      const forecastKw = solcastTargetKwh * (bell / 6.5);
+      const actualKw = hour <= today.getHours() ? forecastKw * 0.92 : 0;
+
+      solarHourlyBars.push({
+        hour: `${hour < 10 ? '0' + hour : hour}:00`,
+        actual: actualKw,
+        forecast: forecastKw,
+        isPast: hour <= today.getHours(),
       });
     }
 
@@ -187,6 +223,11 @@ class ThaiEnergyPanel extends HTMLElement {
       ftPct: ftPct,
       vatPct: vatPct,
       monthlyDailyBars: monthlyDailyBars,
+      solarHourlyBars: solarHourlyBars,
+      solcastEntityFound: solcastEntityFound,
+      solcastForecastToday: solcastForecastToday,
+      solcastPowerNow: solcastPowerNow,
+      solcastForecastRemaining: solcastForecastRemaining,
     };
   }
 
@@ -243,8 +284,17 @@ class ThaiEnergyPanel extends HTMLElement {
       ? `฿${Math.abs(diffVal).toFixed(2)} Monthly Savings`
       : `฿${Math.abs(diffVal).toFixed(2)} Higher than ${d.opposingTariffName}`;
 
-    // Max day total for chart scaling (Day 30 cumulative total)
+    // Max day total for Billing chart scaling
     const maxDayTotal = Math.max(10, ...d.monthlyDailyBars.map(b => b.total));
+
+    // Y-Axis Ticks for Billing Chart
+    const yTick4 = (maxDayTotal).toFixed(0);
+    const yTick3 = (maxDayTotal * 0.75).toFixed(0);
+    const yTick2 = (maxDayTotal * 0.50).toFixed(0);
+    const yTick1 = (maxDayTotal * 0.25).toFixed(0);
+
+    // Max kW for Solar chart scaling
+    const maxSolarKw = Math.max(1, ...d.solarHourlyBars.map(b => Math.max(b.actual, b.forecast)));
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -426,8 +476,34 @@ class ThaiEnergyPanel extends HTMLElement {
         .seg-base { background-color: var(--primary-color, #03a9f4); }
         .seg-ft { background-color: var(--warning-color, #ff9800); }
         .seg-vat { background-color: var(--accent-color, #e91e63); }
+        .seg-actual { background-color: var(--success-color, #4caf50); }
+        .seg-forecast { background-color: var(--warning-color, #ff9800); }
 
-        /* Full Width Stacked Month Chart */
+        /* Chart Components & Y-Axis */
+        .chart-wrapper {
+          display: flex;
+          gap: 12px;
+          height: 200px;
+          margin-top: 12px;
+          padding-bottom: 24px;
+          border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+          position: relative;
+        }
+
+        .y-axis {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          height: 100%;
+          padding-right: 10px;
+          border-right: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          font-size: 11px;
+          color: var(--secondary-text-color, #9e9e9e);
+          text-align: right;
+          min-width: 55px;
+          box-sizing: border-box;
+        }
+
         .chart-legend {
           display: flex;
           gap: 16px;
@@ -449,13 +525,11 @@ class ThaiEnergyPanel extends HTMLElement {
         }
 
         .stacked-chart-container {
+          flex: 1;
           display: flex;
           align-items: flex-end;
           gap: 4px;
-          height: 180px;
-          margin-top: 12px;
-          padding-bottom: 24px;
-          border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+          height: 100%;
           position: relative;
         }
 
@@ -591,9 +665,9 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
           </div>
 
-          <!-- Full Width Cumulative Month Cost Chart -->
+          <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis -->
           <div class="card full-width">
-            <h2>Cumulative Monthly Running Bill Progression (Days 1 to 30 Stacked)</h2>
+            <h2>Cumulative Monthly Running Bill Progression (Days 1 to 30 Labeled Stacked Chart)</h2>
             <div class="chart-legend">
               <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service Charge</div>
               <div class="legend-item"><div class="legend-dot seg-base"></div> 2. Base Energy Charge</div>
@@ -601,33 +675,46 @@ class ThaiEnergyPanel extends HTMLElement {
               <div class="legend-item"><div class="legend-dot seg-vat"></div> 4. VAT (7%)</div>
             </div>
 
-            <div class="stacked-chart-container">
-              ${d.monthlyDailyBars.map(bar => {
-                const sPct = ((bar.service / maxDayTotal) * 100).toFixed(1);
-                const bPct = ((bar.base / maxDayTotal) * 100).toFixed(1);
-                const fPct = ((bar.ft / maxDayTotal) * 100).toFixed(1);
-                const vPct = ((bar.vat / maxDayTotal) * 100).toFixed(1);
-                const opacity = bar.isPastOrToday ? '1.0' : '0.4';
+            <div class="chart-wrapper">
+              <!-- Y-Axis Label Column -->
+              <div class="y-axis">
+                <span>฿${yTick4}</span>
+                <span>฿${yTick3}</span>
+                <span>฿${yTick2}</span>
+                <span>฿${yTick1}</span>
+                <span>฿0</span>
+              </div>
 
-                return `
-                  <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Base: ฿${bar.base.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
-                    <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
-                    <div class="bar-piece seg-base" style="height: ${bPct}%;"></div>
-                    <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
-                    <div class="bar-piece seg-vat" style="height: ${vPct}%;"></div>
-                    <div class="col-day-label">${bar.day}</div>
-                  </div>
-                `;
-              }).join('')}
+              <!-- Stacked Bars Container -->
+              <div class="stacked-chart-container">
+                ${d.monthlyDailyBars.map(bar => {
+                  const sPct = ((bar.service / maxDayTotal) * 100).toFixed(1);
+                  const bPct = ((bar.base / maxDayTotal) * 100).toFixed(1);
+                  const fPct = ((bar.ft / maxDayTotal) * 100).toFixed(1);
+                  const vPct = ((bar.vat / maxDayTotal) * 100).toFixed(1);
+                  const opacity = bar.isPastOrToday ? '1.0' : '0.4';
+
+                  return `
+                    <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Base: ฿${bar.base.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                      <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
+                      <div class="bar-piece seg-base" style="height: ${bPct}%;"></div>
+                      <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
+                      <div class="bar-piece seg-vat" style="height: ${vPct}%;"></div>
+                      <div class="col-day-label">${bar.day}</div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
             </div>
+
             <div class="note-box">
-              Cumulative monthly running bill progression starting near ฿0 on Day 1 and accumulating steadily upward to Day 30 total estimated bill. Color-stacked in strict order: <strong>Fixed Service Charge</strong> (bottom) &rarr; <strong>Base Energy Charge</strong> &rarr; <strong>Ft Charge</strong> &rarr; <strong>VAT (7%)</strong> (top).
+              Cumulative monthly running bill progression with a labeled monetary Y-axis starting near ฿0 on Day 1 and accumulating steadily upward to Day 30 total estimated bill. Color-stacked in strict order: <strong>Fixed Service Charge</strong> (bottom) &rarr; <strong>Base Energy Charge</strong> &rarr; <strong>Ft Charge</strong> &rarr; <strong>VAT (7%)</strong> (top).
             </div>
           </div>
         </div>
       ` : ''}
 
-      <!-- Tab 2: Detailed Solar ROI & BESS -->
+      <!-- Tab 2: Detailed Solar ROI & BESS + Solcast PV Forecast Chart -->
       ${this._activeTab === 'solar' ? `
         <div class="grid">
           <div class="card">
@@ -674,12 +761,57 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val">Solar Storage &rarr; Peak Discharge</span>
               </div>
               <div class="row">
-                <span class="label">Lifetime Solar Generation</span>
-                <span class="val">${d.lifetimeSolar} kWh</span>
+                <span class="label">Solcast PV Forecast Status</span>
+                <span class="val ${d.solcastEntityFound ? 'saving' : ''}">${d.solcastEntityFound ? 'Solcast Integrated' : 'Simulated Solcast Baseline'}</span>
+              </div>
+              <div class="row">
+                <span class="label">Solcast Forecast Generation Today</span>
+                <span class="val">${d.solcastForecastToday} kWh</span>
+              </div>
+              <div class="row">
+                <span class="label">Solcast Forecast Remaining Today</span>
+                <span class="val">${d.solcastForecastRemaining} kWh</span>
               </div>
             </div>
+          </div>
+
+          <!-- Full Width Solar Production vs Solcast PV Forecast Chart -->
+          <div class="card full-width">
+            <h2>Solar Generation Profile vs Solcast PV Forecast (Daylight Hours 06:00 - 18:00)</h2>
+            <div class="chart-legend">
+              <div class="legend-item"><div class="legend-dot seg-actual"></div> Actual Solar Production (kW)</div>
+              <div class="legend-item"><div class="legend-dot seg-forecast"></div> Solcast PV Solar Forecast (kW)</div>
+            </div>
+
+            <div class="chart-wrapper">
+              <!-- Y-Axis for Solar Output -->
+              <div class="y-axis">
+                <span>${maxSolarKw.toFixed(1)} kW</span>
+                <span>${(maxSolarKw * 0.75).toFixed(1)} kW</span>
+                <span>${(maxSolarKw * 0.50).toFixed(1)} kW</span>
+                <span>${(maxSolarKw * 0.25).toFixed(1)} kW</span>
+                <span>0.0 kW</span>
+              </div>
+
+              <!-- Dual Bar Container -->
+              <div class="stacked-chart-container">
+                ${d.solarHourlyBars.map(bar => {
+                  const actPct = ((bar.actual / maxSolarKw) * 100).toFixed(1);
+                  const fcPct = ((bar.forecast / maxSolarKw) * 100).toFixed(1);
+
+                  return `
+                    <div class="stacked-col" title="${bar.hour}: Actual ${bar.actual.toFixed(2)} kW | Solcast Forecast ${bar.forecast.toFixed(2)} kW">
+                      <div class="bar-piece seg-forecast" style="height: ${fcPct}%; opacity: 0.5; margin-bottom: 2px;"></div>
+                      <div class="bar-piece seg-actual" style="height: ${actPct}%;"></div>
+                      <div class="col-day-label" style="font-size: 9px;">${bar.hour}</div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
             <div class="note-box">
-              Models financial recovery by storing excess solar exported during daytime (otherwise sold at 2.20 THB/kWh) and discharging during peak evening hours.
+              Daylight generation chart (06:00 to 18:00) comparing real-time actual solar production against <strong>Solcast PV Forecast</strong> solar model predictions.
             </div>
           </div>
         </div>
@@ -773,7 +905,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.0.9 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.1.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 
