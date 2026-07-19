@@ -371,11 +371,31 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Check if a sensor represents instantaneous power (W/kW) rather than energy (kWh)."""
         if not state_obj:
             return False
+        
+        # Check unit of measurement first (highest precedence)
         unit = state_obj.attributes.get("unit_of_measurement")
-        if unit in ("W", "kW"):
+        if unit:
+            unit_upper = unit.upper()
+            if "KWH" in unit_upper or "WH" in unit_upper:
+                return False
+            if unit_upper in ("W", "KW", "MW"):
+                return True
+
+        # Check device class second
+        device_class = state_obj.attributes.get("device_class")
+        if device_class:
+            if device_class == "energy":
+                return False
+            if device_class == "power":
+                return True
+
+        # Last resort: entity name analysis
+        id_lower = entity_id.lower()
+        if "kwh" in id_lower or "energy" in id_lower or "consumption" in id_lower or "yield" in id_lower:
+            return False
+        if "power" in id_lower or "active_power" in id_lower:
             return True
-        if "power" in entity_id.lower() or "active_power" in entity_id.lower():
-            return True
+            
         return False
 
     def _restore_accumulators(self) -> None:
