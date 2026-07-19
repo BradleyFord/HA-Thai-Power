@@ -3,7 +3,8 @@
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
  * 30-day multi-trend SVG solar line chart with solid historical vs dashed predicted segments,
- * multi-pattern HA entity slug matching, and direct Python coordinator baseline subtraction diagnostic panel.
+ * exact integration entity ID mapping to avoid collision, dynamic Peak/Off-Peak TOU chart option,
+ * and direct Python coordinator baseline subtraction diagnostic panel.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -67,48 +68,19 @@ class ThaiEnergyPanel extends HTMLElement {
 
     const states = this._hass.states;
 
-    const getEntityState = (possibleKeys) => {
-      const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
-      for (const key of keys) {
-        // Try exact match first to prevent collision with other integrations
-        const exactId = key.startsWith('sensor.') ? key : 'sensor.' + key;
-        if (states[exactId]) {
-          const st = states[exactId].state;
-          if (st && st !== 'unavailable' && st !== 'unknown') {
-            return st;
-          }
-        }
-        // Fallback to strict suffix match
-        for (const entityId in states) {
-          if (entityId.endsWith(key)) {
-            const st = states[entityId].state;
-            if (st && st !== 'unavailable' && st !== 'unknown') {
-              return st;
-            }
-          }
+    const getEntityState = (key) => {
+      if (states[key]) {
+        const st = states[key].state;
+        if (st && st !== 'unavailable' && st !== 'unknown') {
+          return st;
         }
       }
       return '0.00';
     };
 
-    const getAttribute = (possibleKeys, attr) => {
-      const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
-      for (const key of keys) {
-        // Try exact match first
-        const exactId = key.startsWith('sensor.') ? key : 'sensor.' + key;
-        if (states[exactId]) {
-          if (states[exactId].attributes && states[exactId].attributes[attr] !== undefined) {
-            return states[exactId].attributes[attr];
-          }
-        }
-        // Fallback to suffix match
-        for (const entityId in states) {
-          if (entityId.endsWith(key)) {
-            if (states[entityId].attributes && states[entityId].attributes[attr] !== undefined) {
-              return states[entityId].attributes[attr];
-            }
-          }
-        }
+    const getAttribute = (key, attr) => {
+      if (states[key] && states[key].attributes && states[key].attributes[attr] !== undefined) {
+        return states[key].attributes[attr];
       }
       return null;
     };
@@ -142,15 +114,15 @@ class ThaiEnergyPanel extends HTMLElement {
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
-    // Query exact sensor names to eliminate collision with any other integration sensors
-    const totalBill = getEntityState(['monthly_estimated_bill']);
-    const baseCost = getEntityState(['monthly_base_energy_cost']);
-    const ftCharge = getEntityState(['monthly_ft_charge']);
-    const serviceCharge = getEntityState(['monthly_fixed_service_charge']);
-    const vatAmount = getEntityState(['monthly_calculated_vat']);
-    const importKwh = getEntityState(['monthly_grid_import_energy']);
-    const exportKwh = getEntityState(['monthly_grid_export_energy']);
-    const solarKwh = getEntityState(['monthly_solar_production_energy']);
+    // Map exact sensor names to eliminate collision with any other integration sensors
+    const totalBill = getEntityState('sensor.monthly_estimated_bill');
+    const baseCost = getEntityState('sensor.monthly_base_energy_cost');
+    const ftCharge = getEntityState('sensor.monthly_ft_charge');
+    const serviceCharge = getEntityState('sensor.monthly_fixed_service_charge');
+    const vatAmount = getEntityState('sensor.monthly_calculated_vat_7');
+    const importKwh = getEntityState('sensor.monthly_grid_import_energy');
+    const exportKwh = getEntityState('sensor.monthly_grid_export_energy');
+    const solarKwh = getEntityState('sensor.monthly_solar_production_energy');
 
     const solarKwhNum = parseFloat(solarKwh) || 0;
     const exportKwhNum = parseFloat(exportKwh) || 0;
@@ -163,36 +135,36 @@ class ThaiEnergyPanel extends HTMLElement {
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
     // Extract Baseline Variables for Debug Diagnostic Panel
-    const importSensorId = getAttribute(['monthly_estimated_bill'], 'import_sensor_id') || 'sensor.power_meter_consumption';
-    const exportSensorId = getAttribute(['monthly_estimated_bill'], 'export_sensor_id') || 'sensor.power_meter_exported';
-    const solarSensorId = getAttribute(['monthly_estimated_bill'], 'solar_sensor_id') || 'sensor.inverter_total_yield';
+    const importSensorId = getAttribute('sensor.monthly_estimated_bill', 'import_sensor_id') || 'sensor.power_meter_consumption';
+    const exportSensorId = getAttribute('sensor.monthly_estimated_bill', 'export_sensor_id') || 'sensor.power_meter_exported';
+    const solarSensorId = getAttribute('sensor.monthly_estimated_bill', 'solar_sensor_id') || 'sensor.inverter_total_yield';
 
-    const importBaseline = getAttribute(['monthly_estimated_bill'], 'import_baseline_kwh');
-    const solarBaseline = getAttribute(['monthly_estimated_bill'], 'solar_baseline_kwh');
-    const exportBaseline = getAttribute(['monthly_estimated_bill'], 'export_baseline_kwh');
+    const importBaseline = getAttribute('sensor.monthly_estimated_bill', 'import_baseline_kwh');
+    const solarBaseline = getAttribute('sensor.monthly_estimated_bill', 'solar_baseline_kwh');
+    const exportBaseline = getAttribute('sensor.monthly_estimated_bill', 'export_baseline_kwh');
 
-    const importCurrentReading = getEntityState([importSensorId]);
-    const solarCurrentReading = getEntityState([solarSensorId]);
-    const exportCurrentReading = getEntityState([exportSensorId]);
+    const importCurrentReading = getEntityState(importSensorId);
+    const solarCurrentReading = getEntityState(solarSensorId);
+    const exportCurrentReading = getEntityState(exportSensorId);
 
     const importUnit = getUnit(importSensorId, 'kWh');
     const solarUnit = getUnit(solarSensorId, 'kWh');
     const exportUnit = getUnit(exportSensorId, 'kWh');
 
     // Extract user configured active power & default placeholder sensors
-    const pm2230Power = getEntityState(['sensor.pm2230_total_active_power']);
-    const inverterPower = getEntityState(['sensor.inverter_active_power']);
-    const defaultGridImport = getEntityState(['sensor.grid_import_kwh']);
-    const defaultSolarProd = getEntityState(['sensor.solar_production_energy']);
-    const defaultGridExport = getEntityState(['sensor.grid_export_kwh']);
+    const pm2230Power = getEntityState('sensor.pm2230_total_active_power');
+    const inverterPower = getEntityState('sensor.inverter_active_power');
+    const defaultGridImport = getEntityState('sensor.grid_import_kwh');
+    const defaultSolarProd = getEntityState('sensor.solar_production_energy');
+    const defaultGridExport = getEntityState('sensor.grid_export_kwh');
 
     const pm2230PowerUnit = getUnit('sensor.pm2230_total_active_power', 'W');
     const inverterPowerUnit = getUnit('sensor.inverter_active_power', 'W');
 
     // Extract 30-Day Historical Arrays from Python Coordinator Attributes
-    const pyImportHistory = getAttribute(['monthly_estimated_bill'], 'daily_import_kwh_history') || [];
-    const pySolarHistory = getAttribute(['monthly_estimated_bill'], 'daily_solar_kwh_history') || [];
-    const pyExportHistory = getAttribute(['monthly_estimated_bill'], 'daily_export_kwh_history') || [];
+    const pyImportHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_import_kwh_history') || [];
+    const pySolarHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_solar_kwh_history') || [];
+    const pyExportHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_export_kwh_history') || [];
 
     const today = new Date();
     const currentDay = Math.min(30, Math.max(1, today.getDate()));
@@ -200,10 +172,16 @@ class ThaiEnergyPanel extends HTMLElement {
     const totalFtNum = parseFloat(ftCharge) || 0;
     const totalServiceNum = parseFloat(serviceCharge) || 38.22;
     const totalVatNum = parseFloat(vatAmount) || 0;
-    const ftRate = getAttribute(['monthly_estimated_bill'], 'ft_rate') || 0.395;
+    const ftRate = getAttribute('sensor.monthly_estimated_bill', 'ft_rate') || 0.395;
+    const tariffCategory = getAttribute('sensor.monthly_estimated_bill', 'tariff_category') || '1.2';
     const VAT_RATE = 0.07;
 
-    // Generate non-linear cumulative monthly bill progression with 3 Base tiers
+    // Check if active tariff is TOU (Time of Use 1.3.1 or 1.3.2)
+    const isTou = tariffCategory.startsWith('1.3');
+    const peakRate = tariffCategory === '1.3.1' ? 5.2636 : 5.7982;
+    const offpeakRate = tariffCategory === '1.3.1' ? 2.6295 : 2.6369;
+
+    // Generate non-linear cumulative monthly bill progression with 3 Base tiers or TOU Peak/Off-Peak split
     let runningKwh = 0.0;
     const dailyKwhList = [];
     for (let day = 1; day <= 30; day++) {
@@ -217,16 +195,24 @@ class ThaiEnergyPanel extends HTMLElement {
 
     const monthlyDailyBars = dailyKwhList.map((item) => {
       const isPastOrToday = item.isPastOrToday;
-      
-      // Calculate progressive tiers for this day's cumulative runningKwh
-      const t1Kwh = Math.min(item.runningKwh, 150);
-      const t2Kwh = Math.max(0, Math.min(item.runningKwh - 150, 250));
-      const t3Kwh = Math.max(0, item.runningKwh - 400);
+      let t1Val = 0, t2Val = 0, t3Val = 0, peakVal = 0, offpeakVal = 0, bVal = 0;
 
-      const t1Val = t1Kwh * 3.2482;
-      const t2Val = t2Kwh * 4.2218;
-      const t3Val = t3Kwh * 4.4217;
-      const bVal = t1Val + t2Val + t3Val;
+      if (isTou) {
+        // Dynamic Peak/Off-Peak split based on active cumulative run-rate
+        peakVal = (item.runningKwh * 0.40) * peakRate;
+        offpeakVal = (item.runningKwh * 0.60) * offpeakRate;
+        bVal = peakVal + offpeakVal;
+      } else {
+        // Calculate progressive tiers for this day's cumulative runningKwh
+        const t1Kwh = Math.min(item.runningKwh, 150);
+        const t2Kwh = Math.max(0, Math.min(item.runningKwh - 150, 250));
+        const t3Kwh = Math.max(0, item.runningKwh - 400);
+
+        t1Val = t1Kwh * 3.2482;
+        t2Val = t2Kwh * 4.2218;
+        t3Val = t3Kwh * 4.4217;
+        bVal = t1Val + t2Val + t3Val;
+      }
 
       const sVal = totalServiceNum * (item.day / 30.0);
       const fVal = item.runningKwh * ftRate;
@@ -239,6 +225,8 @@ class ThaiEnergyPanel extends HTMLElement {
         tier1: t1Val,
         tier2: t2Val,
         tier3: t3Val,
+        peak: peakVal,
+        offpeak: offpeakVal,
         ft: fVal,
         vat: vVal,
         total: dayCumulativeTotal,
@@ -268,19 +256,28 @@ class ThaiEnergyPanel extends HTMLElement {
       });
     }
 
-    // Break down current configuration base cost into dynamic tiers for progress horizontal bar
+    // Break down current configuration base cost into dynamic segments for progress horizontal bar
     const importKwhVal = parseFloat(importKwh) || 0;
-    const currentT1Kwh = Math.min(importKwhVal, 150);
-    const currentT2Kwh = Math.max(0, Math.min(importKwhVal - 150, 250));
-    const currentT3Kwh = Math.max(0, importKwhVal - 400);
+    let t1Pct = 0, t2Pct = 0, t3Pct = 0, peakPct = 0, offpeakPct = 0;
+    
+    if (isTou) {
+      const currentPeakVal = (importKwhVal * 0.40) * peakRate;
+      const currentOffpeakVal = (importKwhVal * 0.60) * offpeakRate;
+      peakPct = totalBillNum > 0 ? ((currentPeakVal / totalBillNum) * 100).toFixed(1) : 0;
+      offpeakPct = totalBillNum > 0 ? ((currentOffpeakVal / totalBillNum) * 100).toFixed(1) : 0;
+    } else {
+      const currentT1Kwh = Math.min(importKwhVal, 150);
+      const currentT2Kwh = Math.max(0, Math.min(importKwhVal - 150, 250));
+      const currentT3Kwh = Math.max(0, importKwhVal - 400);
 
-    const currentT1Val = currentT1Kwh * 3.2482;
-    const currentT2Val = currentT2Kwh * 4.2218;
-    const currentT3Val = currentT3Kwh * 4.4217;
+      const currentT1Val = currentT1Kwh * 3.2482;
+      const currentT2Val = currentT2Kwh * 4.2218;
+      const currentT3Val = currentT3Kwh * 4.4217;
 
-    const t1Pct = totalBillNum > 0 ? ((currentT1Val / totalBillNum) * 100).toFixed(1) : 0;
-    const t2Pct = totalBillNum > 0 ? ((currentT2Val / totalBillNum) * 100).toFixed(1) : 0;
-    const t3Pct = totalBillNum > 0 ? ((currentT3Val / totalBillNum) * 100).toFixed(1) : 0;
+      t1Pct = totalBillNum > 0 ? ((currentT1Val / totalBillNum) * 100).toFixed(1) : 0;
+      t2Pct = totalBillNum > 0 ? ((currentT2Val / totalBillNum) * 100).toFixed(1) : 0;
+      t3Pct = totalBillNum > 0 ? ((currentT3Val / totalBillNum) * 100).toFixed(1) : 0;
+    }
 
     this._data = {
       touStatus: touStatus,
@@ -295,33 +292,36 @@ class ThaiEnergyPanel extends HTMLElement {
       solarKwh: solarKwh,
       selfConsumedKwh: selfConsumedKwh.toFixed(2),
       selfConsumptionRatio: selfConsumptionRatio,
-      solarSavings: getEntityState(['monthly_solar_savings']),
-      solarRevenue: getEntityState(['monthly_solar_export_revenue']),
-      totalSolarBenefit: getEntityState(['monthly_total_solar_benefit']),
-      lifetimeBenefit: getEntityState(['lifetime_total_solar_benefit']),
-      lifetimeImport: getEntityState(['lifetime_grid_import_energy']),
-      lifetimeSolar: getEntityState(['lifetime_solar_production_energy']),
-      marginalRate: getEntityState(['marginal_rate']),
-      gridPrice: getEntityState(['current_grid_price']),
-      ftRate: getEntityState(['ft_rate']),
-      sellbackRate: getEntityState(['sellback_rate']),
-      tariffDiff: getEntityState(['tariff_diff']),
-      bessSavings: getEntityState(['bess_savings']),
-      meaPoints: getEntityState(['mea_points']),
-      meaCash: getEntityState(['mea_cash']),
-      outageCost: getEntityState(['outage_cost']),
-      outageCount: getEntityState(['outage_count']),
-      lastMonthBill: getEntityState('last_month_bill_thb') || getAttribute(['monthly_estimated_bill'], 'last_month_bill_thb') || '0.00',
-      lastMonthImport: getEntityState('last_month_import_kwh') || getAttribute(['monthly_estimated_bill'], 'last_month_import_kwh') || '0.00',
-      provider: getAttribute(['monthly_estimated_bill'], 'utility_provider') || 'MEA',
-      tariffCategory: getAttribute(['monthly_estimated_bill'], 'tariff_category') || '1.2',
-      opposingTariffName: getAttribute(['monthly_estimated_bill'], 'opposing_tariff_name') || 'TOU 1.3.2',
+      solarSavings: getEntityState('sensor.monthly_solar_savings'),
+      solarRevenue: getEntityState('sensor.monthly_solar_export_revenue'),
+      totalSolarBenefit: getEntityState('sensor.monthly_total_solar_benefit'),
+      lifetimeBenefit: getEntityState('sensor.lifetime_total_solar_benefit'),
+      lifetimeImport: getEntityState('sensor.lifetime_grid_import_energy'),
+      lifetimeSolar: getEntityState('sensor.lifetime_solar_production_energy'),
+      marginalRate: getEntityState('sensor.active_marginal_retail_rate'),
+      gridPrice: getEntityState('sensor.current_grid_energy_import_price'),
+      ftRate: getEntityState('sensor.current_ft_adjustment_rate'),
+      sellbackRate: getEntityState('sensor.solar_buy_back_rate'),
+      tariffDiff: getEntityState('sensor.predictive_tariff_difference'),
+      bessSavings: getEntityState('sensor.bess_storage_simulated_savings'),
+      meaPoints: getEntityState('sensor.mea_virtual_points_balance'),
+      meaCash: getEntityState('sensor.mea_points_cash_value'),
+      outageCost: getEntityState('sensor.grid_outage_economic_cost'),
+      outageCount: getEntityState('sensor.grid_outage_incident_count'),
+      lastMonthBill: getAttribute('sensor.monthly_estimated_bill', 'last_month_bill_thb') || '0.00',
+      lastMonthImport: getAttribute('sensor.monthly_estimated_bill', 'last_month_import_kwh') || '0.00',
+      provider: getAttribute('sensor.monthly_estimated_bill', 'utility_provider') || 'MEA',
+      tariffCategory: tariffCategory,
+      opposingTariffName: getAttribute('sensor.monthly_estimated_bill', 'opposing_tariff_name') || 'TOU 1.3.2',
       basePct: basePct,
       ftPct: ftPct,
       vatPct: vatPct,
       t1Pct: t1Pct,
       t2Pct: t2Pct,
       t3Pct: t3Pct,
+      peakPct: peakPct,
+      offpeakPct: offpeakPct,
+      isTou: isTou,
       monthlyDailyBars: monthlyDailyBars,
       solarMonthlyTrends: solarMonthlyTrends,
       solcastEntityFound: solcastEntityFound,
@@ -343,7 +343,7 @@ class ThaiEnergyPanel extends HTMLElement {
       solarUnit: solarUnit,
       exportUnit: exportUnit,
       currentDayOfCycle: currentDay,
-      billingResetDay: getAttribute(['monthly_estimated_bill'], 'billing_day') || '1',
+      billingResetDay: getAttribute('sensor.monthly_estimated_bill', 'billing_day') || '1',
 
       // Additional User Configured Sensors
       pm2230Power: pm2230Power,
@@ -634,6 +634,8 @@ class ThaiEnergyPanel extends HTMLElement {
         .seg-tier1 { background-color: #1976d2; }
         .seg-tier2 { background-color: #2196f3; }
         .seg-tier3 { background-color: #64b5f6; }
+        .seg-peak { background-color: #1565c0; }
+        .seg-offpeak { background-color: #90caf9; }
         .seg-ft { background-color: var(--warning-color, #ff9800); }
         .seg-vat { background-color: var(--accent-color, #e91e63); }
 
@@ -848,20 +850,35 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
 
             <div class="progress-container">
-              <div class="bar-label">
-                <span>Tier 1 (${d.t1Pct}%)</span>
-                <span>Tier 2 (${d.t2Pct}%)</span>
-                <span>Tier 3 (${d.t3Pct}%)</span>
-                <span>Ft (${d.ftPct}%)</span>
-                <span>VAT (${d.vatPct}%)</span>
-              </div>
-              <div class="bar-bg">
-                <div class="bar-segment seg-tier1" style="width: ${d.t1Pct}%"></div>
-                <div class="bar-segment seg-tier2" style="width: ${d.t2Pct}%"></div>
-                <div class="bar-segment seg-tier3" style="width: ${d.t3Pct}%"></div>
-                <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
-                <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
-              </div>
+              ${d.isTou ? `
+                <div class="bar-label">
+                  <span>Peak (${d.peakPct}%)</span>
+                  <span>Off-Peak (${d.offpeakPct}%)</span>
+                  <span>Ft (${d.ftPct}%)</span>
+                  <span>VAT (${d.vatPct}%)</span>
+                </div>
+                <div class="bar-bg">
+                  <div class="bar-segment seg-peak" style="width: ${d.peakPct}%"></div>
+                  <div class="bar-segment seg-offpeak" style="width: ${d.offpeakPct}%"></div>
+                  <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
+                  <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
+                </div>
+              ` : `
+                <div class="bar-label">
+                  <span>Tier 1 (${d.t1Pct}%)</span>
+                  <span>Tier 2 (${d.t2Pct}%)</span>
+                  <span>Tier 3 (${d.t3Pct}%)</span>
+                  <span>Ft (${d.ftPct}%)</span>
+                  <span>VAT (${d.vatPct}%)</span>
+                </div>
+                <div class="bar-bg">
+                  <div class="bar-segment seg-tier1" style="width: ${d.t1Pct}%"></div>
+                  <div class="bar-segment seg-tier2" style="width: ${d.t2Pct}%"></div>
+                  <div class="bar-segment seg-tier3" style="width: ${d.t3Pct}%"></div>
+                  <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
+                  <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
+                </div>
+              `}
             </div>
           </div>
 
@@ -894,14 +911,22 @@ class ThaiEnergyPanel extends HTMLElement {
 
           <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis & Baseline Subtraction Engine -->
           <div class="card full-width">
-            <h2>Cumulative Monthly Running Bill Progression (Tiered Base Charge)</h2>
+            <h2>Cumulative Monthly Running Bill Progression (${d.isTou ? 'TOU Base Split' : 'Tiered Base Charge'})</h2>
             <div class="chart-legend">
-              <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service</div>
-              <div class="legend-item"><div class="legend-dot seg-tier1"></div> 2. Base Tier 1 (0-150)</div>
-              <div class="legend-item"><div class="legend-dot seg-tier2"></div> 3. Base Tier 2 (151-400)</div>
-              <div class="legend-item"><div class="legend-dot seg-tier3"></div> 4. Base Tier 3 (&gt;400)</div>
-              <div class="legend-item"><div class="legend-dot seg-ft"></div> 5. Ft Charge</div>
-              <div class="legend-item"><div class="legend-dot seg-vat"></div> 6. VAT (7%)</div>
+              ${d.isTou ? `
+                <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service</div>
+                <div class="legend-item"><div class="legend-dot seg-peak"></div> 2. Peak Base Charge</div>
+                <div class="legend-item"><div class="legend-dot seg-offpeak"></div> 3. Off-Peak Base Charge</div>
+                <div class="legend-item"><div class="legend-dot seg-ft"></div> 4. Ft Charge</div>
+                <div class="legend-item"><div class="legend-dot seg-vat"></div> 5. VAT (7%)</div>
+              ` : `
+                <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service</div>
+                <div class="legend-item"><div class="legend-dot seg-tier1"></div> 2. Base Tier 1 (0-150)</div>
+                <div class="legend-item"><div class="legend-dot seg-tier2"></div> 3. Base Tier 2 (151-400)</div>
+                <div class="legend-item"><div class="legend-dot seg-tier3"></div> 4. Base Tier 3 (&gt;400)</div>
+                <div class="legend-item"><div class="legend-dot seg-ft"></div> 5. Ft Charge</div>
+                <div class="legend-item"><div class="legend-dot seg-vat"></div> 6. VAT (7%)</div>
+              `}
             </div>
 
             <div class="chart-wrapper">
@@ -918,33 +943,54 @@ class ThaiEnergyPanel extends HTMLElement {
               <div class="stacked-chart-container">
                 ${d.monthlyDailyBars.map(bar => {
                   const sPct = ((bar.service / maxDayTotal) * 100).toFixed(1);
-                  const t1Pct = ((bar.tier1 / maxDayTotal) * 100).toFixed(1);
-                  const t2Pct = ((bar.tier2 / maxDayTotal) * 100).toFixed(1);
-                  const t3Pct = ((bar.tier3 / maxDayTotal) * 100).toFixed(1);
                   const fPct = ((bar.ft / maxDayTotal) * 100).toFixed(1);
                   const vPct = ((bar.vat / maxDayTotal) * 100).toFixed(1);
                   const opacity = bar.isPastOrToday ? '1.0' : '0.4';
 
-                  return `
-                    <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Tier 1: ฿${bar.tier1.toFixed(2)}, Tier 2: ฿${bar.tier2.toFixed(2)}, Tier 3: ฿${bar.tier3.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
-                      <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
-                      <div class="bar-piece seg-tier1" style="height: ${t1Pct}%;"></div>
-                      <div class="bar-piece seg-tier2" style="height: ${t2Pct}%;"></div>
-                      <div class="bar-piece seg-tier3" style="height: ${t3Pct}%;"></div>
-                      <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
-                      <div class="bar-piece seg-vat" style="height: ${vPct}%;"></div>
-                      <div class="col-day-label">${bar.day}</div>
-                    </div>
-                  `;
+                  if (d.isTou) {
+                    const pPct = ((bar.peak / maxDayTotal) * 100).toFixed(1);
+                    const opPct = ((bar.offpeak / maxDayTotal) * 100).toFixed(1);
+                    return `
+                      <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Peak: ฿${bar.peak.toFixed(2)}, Off-Peak: ฿${bar.offpeak.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                        <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
+                        <div class="bar-piece seg-peak" style="height: ${pPct}%;"></div>
+                        <div class="bar-piece seg-offpeak" style="height: ${opPct}%;"></div>
+                        <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
+                        <div class="bar-piece seg-vat" style="height: ${vPct}%;"></div>
+                        <div class="col-day-label">${bar.day}</div>
+                      </div>
+                    `;
+                  } else {
+                    const t1Pct = ((bar.tier1 / maxDayTotal) * 100).toFixed(1);
+                    const t2Pct = ((bar.tier2 / maxDayTotal) * 100).toFixed(1);
+                    const t3Pct = ((bar.tier3 / maxDayTotal) * 100).toFixed(1);
+                    return `
+                      <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Tier 1: ฿${bar.tier1.toFixed(2)}, Tier 2: ฿${bar.tier2.toFixed(2)}, Tier 3: ฿${bar.tier3.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                        <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
+                        <div class="bar-piece seg-tier1" style="height: ${t1Pct}%;"></div>
+                        <div class="bar-piece seg-tier2" style="height: ${t2Pct}%;"></div>
+                        <div class="bar-piece seg-tier3" style="height: ${t3Pct}%;"></div>
+                        <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
+                        <div class="bar-piece seg-vat" style="height: ${vPct}%;"></div>
+                        <div class="col-day-label">${bar.day}</div>
+                      </div>
+                    `;
+                  }
                 }).join('')}
               </div>
             </div>
 
             <div class="note-box">
-              Accurate progressive tiered billing cycle progression. Base Charge is split daily:
-              <strong style="color: #1976d2;">Tier 1</strong> (first 150 kWh) &bull;
-              <strong style="color: #2196f3;">Tier 2</strong> (next 250 kWh) &bull;
-              <strong style="color: #64b5f6;">Tier 3</strong> (excess over 400 kWh).
+              ${d.isTou ? `
+                Accurate progressive Time of Use billing cycle progression. Base Charge is split daily:
+                <strong style="color: #1565c0;">Peak Charge</strong> (09:00 - 22:00, Mon-Fri) &bull;
+                <strong style="color: #90caf9;">Off-Peak Charge</strong> (all other hours, weekends, and holidays).
+              ` : `
+                Accurate progressive tiered billing cycle progression. Base Charge is split daily:
+                <strong style="color: #1976d2;">Tier 1</strong> (first 150 kWh) &bull;
+                <strong style="color: #2196f3;">Tier 2</strong> (next 250 kWh) &bull;
+                <strong style="color: #64b5f6;">Tier 3</strong> (excess over 400 kWh).
+              `}
             </div>
 
             <!-- Diagnostics & Troubleshooting Panel -->
@@ -1236,7 +1282,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.4 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.7 &bull; Home Assistant Custom Integration
       </div>
     `;
 
