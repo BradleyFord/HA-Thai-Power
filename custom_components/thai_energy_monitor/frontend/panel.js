@@ -3,7 +3,7 @@
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
  * 30-day multi-trend SVG solar line chart, multi-pattern HA entity slug matching, and
- * real HA recorder statistics API query for non-linear actual historical data.
+ * real HA recorder statistics API query for non-linear actual historical energy & solar data.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -15,6 +15,8 @@ class ThaiEnergyPanel extends HTMLElement {
     this._data = {};
     this._rendered = false;
     this._dailyStatsMap = {};
+    this._dailySolarStatsMap = {};
+    this._dailyExportStatsMap = {};
   }
 
   set hass(hass) {
@@ -37,37 +39,65 @@ class ThaiEnergyPanel extends HTMLElement {
     if (!this._hass) return;
 
     let importEntityId = null;
+    let solarEntityId = null;
+    let exportEntityId = null;
+
     const states = this._hass.states;
     for (const id in states) {
-      if (id.includes('monthly_grid_import_energy') || id.includes('monthly_import_kwh') || id.includes('grid_import_energy')) {
+      if (!importEntityId && (id.includes('monthly_grid_import_energy') || id.includes('monthly_import_kwh') || id.includes('grid_import_energy'))) {
         importEntityId = id;
-        break;
+      }
+      if (!solarEntityId && (id.includes('monthly_solar_production_energy') || id.includes('monthly_solar_kwh') || id.includes('solar_production_energy'))) {
+        solarEntityId = id;
+      }
+      if (!exportEntityId && (id.includes('monthly_grid_export_energy') || id.includes('monthly_export_kwh') || id.includes('grid_export_energy'))) {
+        exportEntityId = id;
       }
     }
 
-    if (!importEntityId) return;
-
     const now = new Date();
     const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const queryIds = [importEntityId, solarEntityId, exportEntityId].filter(Boolean);
+
+    if (queryIds.length === 0) return;
 
     try {
       const stats = await this._hass.callWS({
         type: 'recorder/statistics_during_period',
         start_time: startDate.toISOString(),
         end_time: now.toISOString(),
-        statistic_ids: [importEntityId],
+        statistic_ids: queryIds,
         period: 'day',
       });
 
-      if (stats && stats[importEntityId]) {
-        const statsList = stats[importEntityId];
-        const map = {};
-        statsList.forEach((st) => {
-          const dt = new Date(st.start);
-          const dayNum = dt.getDate();
-          map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
-        });
-        this._dailyStatsMap = map;
+      if (stats) {
+        if (importEntityId && stats[importEntityId]) {
+          const map = {};
+          stats[importEntityId].forEach((st) => {
+            const dayNum = new Date(st.start).getDate();
+            map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
+          });
+          this._dailyStatsMap = map;
+        }
+
+        if (solarEntityId && stats[solarEntityId]) {
+          const map = {};
+          stats[solarEntityId].forEach((st) => {
+            const dayNum = new Date(st.start).getDate();
+            map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
+          });
+          this._dailySolarStatsMap = map;
+        }
+
+        if (exportEntityId && stats[exportEntityId]) {
+          const map = {};
+          stats[exportEntityId].forEach((st) => {
+            const dayNum = new Date(st.start).getDate();
+            map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
+          });
+          this._dailyExportStatsMap = map;
+        }
+
         this._extractData();
         if (this._rendered) {
           this._initialRender();
@@ -197,7 +227,6 @@ class ThaiEnergyPanel extends HTMLElement {
     const totalVatNum = parseFloat(vatAmount) || 0;
     const importKwhNum = Math.max(0.1, parseFloat(importKwh) || 1.0);
 
-    // Calculate actual cumulative kWh for elapsed days if stats map is available
     let runningKwh = 0.0;
     const dailyKwhList = [];
     for (let day = 1; day <= 30; day++) {
@@ -233,21 +262,29 @@ class ThaiEnergyPanel extends HTMLElement {
       };
     });
 
-    // Generate 30-day Solar Monthly Trend Data for Line Chart
-    const dailySolcastAvg = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 26.0;
-    const dailySolarAvg = Math.max(0.1, solarKwhNum / Math.max(1, currentDay));
-    const dailySelfAvg = Math.max(0.05, selfConsumedKwh / Math.max(1, currentDay));
-    const dailyExportAvg = Math.max(0.05, exportKwhNum / Math.max(1, currentDay));
+    // Generate 30-day Solar Monthly Trend Data for Line Chart (with correct per-day export scaling)
+    const dailySolcastAvg = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 35.0;
+    const dailySolarAvg = Math.max(0.1, solarKwhNum / currentDay);
+    const dailySelfAvg = Math.max(0.05, selfConsumedKwh / currentDay);
+    const dailyExportAvg = Math.max(0.05, exportKwhNum / currentDay);
 
     const solarMonthlyTrends = [];
     for (let day = 1; day <= 30; day++) {
       const isPastOrToday = day <= currentDay;
-      const factor = isPastOrToday ? (0.9 + (day % 3) * 0.08) : 1.0;
+
+      let prodVal = 0.0;
+      let exportVal = 0.0;
+
+      if (isPastOrToday) {
+        prodVal = this._dailySolarStatsMap[day] !== undefined ? parseFloat(this._dailySolarStatsMap[day]) : dailySolarAvg;
+        exportVal = this._dailyExportStatsMap[day] !== undefined ? parseFloat(this._dailyExportStatsMap[day]) : dailyExportAvg;
+      } else {
+        prodVal = dailySolarAvg;
+        exportVal = dailyExportAvg;
+      }
 
       const solcastVal = dailySolcastAvg;
-      const prodVal = isPastOrToday ? Math.min(solcastVal, dailySolarAvg * factor) : dailySolarAvg;
-      const selfVal = isPastOrToday ? Math.min(prodVal, dailySelfAvg * factor) : dailySelfAvg;
-      const exportVal = isPastOrToday ? Math.max(0, prodVal - selfVal) : dailyExportAvg;
+      const selfVal = Math.max(0, prodVal - exportVal);
 
       solarMonthlyTrends.push({
         day: day,
@@ -1036,7 +1073,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.1.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.1.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 
