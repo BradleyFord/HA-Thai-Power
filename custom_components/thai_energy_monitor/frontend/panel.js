@@ -1,7 +1,8 @@
 /**
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
- * rich detailed metrics across 4 tabs, full-width monthly stacked cost chart, and official Home Assistant theme styling tokens.
+ * rich detailed metrics across 4 tabs, full-width monthly stacked cost chart, and
+ * 3-layer resilient TOU peak/off-peak timezone resolution.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -24,6 +25,44 @@ class ThaiEnergyPanel extends HTMLElement {
     }
   }
 
+  _getIsOffpeak(states) {
+    // 1. Check entity state for tou_window_status or tou_status
+    for (const entityId in states) {
+      if (entityId.includes('tou_window_status') || entityId.includes('tou_status')) {
+        const st = states[entityId].state;
+        if (st && st !== 'unavailable' && st !== 'unknown' && st !== '0.00') {
+          return st.toLowerCase().includes('off');
+        }
+      }
+    }
+
+    // 2. Check extra state attributes on any thai_energy entity
+    for (const entityId in states) {
+      if (entityId.includes('thai_energy') || entityId.includes('monthly_estimated_bill')) {
+        const attrs = states[entityId].attributes;
+        if (attrs) {
+          if (attrs.is_offpeak !== undefined && attrs.is_offpeak !== null) {
+            return attrs.is_offpeak === true || String(attrs.is_offpeak).toLowerCase() === 'true';
+          }
+          if (attrs.tou_status) {
+            return String(attrs.tou_status).toLowerCase().includes('off');
+          }
+        }
+      }
+    }
+
+    // 3. Fallback: Direct Thailand Standard Time (UTC+7 / Asia/Bangkok) hour check
+    const now = new Date();
+    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const thaiDate = new Date(utcMs + (3600000 * 7));
+    const day = thaiDate.getDay(); // 0 = Sunday, 6 = Saturday
+    const hour = thaiDate.getHours();
+
+    if (day === 0 || day === 6) return true; // Weekend = Off-Peak
+    if (hour >= 22 || hour < 9) return true; // 10 PM - 9 AM = Off-Peak
+    return false;
+  }
+
   _extractData() {
     if (!this._hass) return;
 
@@ -32,7 +71,10 @@ class ThaiEnergyPanel extends HTMLElement {
     const getEntityState = (key) => {
       for (const entityId in states) {
         if (entityId.includes(key)) {
-          return states[entityId].state;
+          const st = states[entityId].state;
+          if (st && st !== 'unavailable' && st !== 'unknown') {
+            return st;
+          }
         }
       }
       return '0.00';
@@ -47,7 +89,8 @@ class ThaiEnergyPanel extends HTMLElement {
       return null;
     };
 
-    const touStatus = getEntityState('tou_window_status') || getAttribute('monthly_estimated_bill', 'tou_status') || 'Off-Peak';
+    const isOffpeak = this._getIsOffpeak(states);
+    const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
     const totalBill = getEntityState('monthly_estimated_bill');
     const baseCost = getEntityState('monthly_base_cost');
@@ -99,7 +142,7 @@ class ThaiEnergyPanel extends HTMLElement {
 
     this._data = {
       touStatus: touStatus,
-      isOffpeak: touStatus.toLowerCase().includes('off'),
+      isOffpeak: isOffpeak,
       totalBill: totalBill,
       baseCost: baseCost,
       ftCharge: ftCharge,
@@ -410,7 +453,7 @@ class ThaiEnergyPanel extends HTMLElement {
         .stacked-col {
           flex: 1;
           display: flex;
-          flex-direction: column-reverse; /* Stacked Order: 1. Service -> 2. Base -> 3. FT -> 4. VAT */
+          flex-direction: column-reverse;
           height: 100%;
           justify-content: flex-start;
           align-items: center;
@@ -559,7 +602,6 @@ class ThaiEnergyPanel extends HTMLElement {
 
                 return `
                   <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Base: ฿${bar.base.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
-                    <!-- Stacked from bottom to top: 1. Service -> 2. Base -> 3. FT -> 4. VAT -->
                     <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
                     <div class="bar-piece seg-base" style="height: ${bPct}%;"></div>
                     <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
@@ -722,7 +764,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.0.6 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.0.7 &bull; Home Assistant Custom Integration
       </div>
     `;
 
