@@ -1,7 +1,7 @@
 /**
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
- * rich detailed metrics across 4 tabs, full-width monthly stacked cost chart, and
+ * rich detailed metrics across 4 tabs, cumulative monthly bill progression chart, and
  * multi-pattern HA entity slug matching.
  */
 
@@ -119,23 +119,24 @@ class ThaiEnergyPanel extends HTMLElement {
     const ftPct = Math.min(100, Math.round(((parseFloat(ftCharge) || 0) / totalBillNum) * 100));
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
-    // Generate monthly stacked daily bar data for days 1 to 30
+    // Generate cumulative monthly bill progression for days 1 to 30 (Starts near 0 on Day 1 and accumulates upward)
     const today = new Date();
     const currentDay = Math.min(30, Math.max(1, today.getDate()));
-    const dailyBaseAvg = (parseFloat(baseCost) || 0) / Math.max(1, currentDay);
-    const dailyFtAvg = (parseFloat(ftCharge) || 0) / Math.max(1, currentDay);
-    const dailyVatAvg = (parseFloat(vatAmount) || 0) / Math.max(1, currentDay);
-    const dailyService = (parseFloat(serviceCharge) || 38.22) / 30.0;
+    const totalBaseNum = parseFloat(baseCost) || 0;
+    const totalFtNum = parseFloat(ftCharge) || 0;
+    const totalServiceNum = parseFloat(serviceCharge) || 38.22;
+    const totalVatNum = parseFloat(vatAmount) || 0;
 
     const monthlyDailyBars = [];
     for (let day = 1; day <= 30; day++) {
       const isPastOrToday = day <= currentDay;
-      const factor = isPastOrToday ? (0.85 + (day % 4) * 0.1) : 1.0;
-      const sVal = dailyService;
-      const bVal = isPastOrToday ? dailyBaseAvg * factor : dailyBaseAvg;
-      const fVal = isPastOrToday ? dailyFtAvg * factor : dailyFtAvg;
-      const vVal = isPastOrToday ? dailyVatAvg * factor : dailyVatAvg;
-      const dayTotal = sVal + bVal + fVal + vVal;
+      const progressRatio = day / 30.0;
+
+      const sVal = totalServiceNum * progressRatio;
+      const bVal = totalBaseNum * progressRatio;
+      const fVal = totalFtNum * progressRatio;
+      const vVal = totalVatNum * progressRatio;
+      const dayCumulativeTotal = sVal + bVal + fVal + vVal;
 
       monthlyDailyBars.push({
         day: day,
@@ -143,7 +144,7 @@ class ThaiEnergyPanel extends HTMLElement {
         base: bVal,
         ft: fVal,
         vat: vVal,
-        total: dayTotal,
+        total: dayCumulativeTotal,
         isPastOrToday: isPastOrToday,
       });
     }
@@ -242,7 +243,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ? `฿${Math.abs(diffVal).toFixed(2)} Monthly Savings`
       : `฿${Math.abs(diffVal).toFixed(2)} Higher than ${d.opposingTariffName}`;
 
-    // Max day total for chart scaling
+    // Max day total for chart scaling (Day 30 cumulative total)
     const maxDayTotal = Math.max(10, ...d.monthlyDailyBars.map(b => b.total));
 
     this.shadowRoot.innerHTML = `
@@ -590,9 +591,9 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
           </div>
 
-          <!-- Full Width Stacked Month Cost Chart -->
+          <!-- Full Width Cumulative Month Cost Chart -->
           <div class="card full-width">
-            <h2>Full Billing Month Cost Profile (Days 1 to 30 Stacked)</h2>
+            <h2>Cumulative Monthly Running Bill Progression (Days 1 to 30 Stacked)</h2>
             <div class="chart-legend">
               <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service Charge</div>
               <div class="legend-item"><div class="legend-dot seg-base"></div> 2. Base Energy Charge</div>
@@ -609,7 +610,7 @@ class ThaiEnergyPanel extends HTMLElement {
                 const opacity = bar.isPastOrToday ? '1.0' : '0.4';
 
                 return `
-                  <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Base: ฿${bar.base.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                  <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Base: ฿${bar.base.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
                     <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
                     <div class="bar-piece seg-base" style="height: ${bPct}%;"></div>
                     <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
@@ -620,7 +621,7 @@ class ThaiEnergyPanel extends HTMLElement {
               }).join('')}
             </div>
             <div class="note-box">
-              Full-width month stacked chart displaying daily cost breakdown from Day 1 to 30. Color-stacked in strict order: <strong>Fixed Service Charge</strong> (bottom) &rarr; <strong>Base Energy Charge</strong> &rarr; <strong>Ft Charge</strong> &rarr; <strong>VAT (7%)</strong> (top).
+              Cumulative monthly running bill progression starting near ฿0 on Day 1 and accumulating steadily upward to Day 30 total estimated bill. Color-stacked in strict order: <strong>Fixed Service Charge</strong> (bottom) &rarr; <strong>Base Energy Charge</strong> &rarr; <strong>Ft Charge</strong> &rarr; <strong>VAT (7%)</strong> (top).
             </div>
           </div>
         </div>
@@ -772,7 +773,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.0.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.0.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 
