@@ -199,4 +199,7 @@ class ThaiEnergyCostSensor(
             "import_sensor_id": self.coordinator.import_sensor_id,
             "export_sensor_id": self.coordinator.export_sensor_id,
             "solar_sensor_id": self.coordinator.solar_sensor_id,
+            "daily_import_kwh_history": self.coordinator.data.get("daily_import_kwh_history"),
+            "daily_solar_kwh_history": self.coordinator.data.get("daily_solar_kwh_history"),
+            "daily_export_kwh_history": self.coordinator.data.get("daily_export_kwh_history"),
         }
