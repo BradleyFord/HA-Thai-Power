@@ -2,16 +2,18 @@
 
 Performs asynchronous numerical integration (Riemann sums), tariff calculation,
 phantom predictive tariff comparison, BESS simulation, MEA gamification points,
-monthly billing cycle auto-resets, HA Energy Dashboard compatibility, and single
-bidirectional net grid sensor support (positive for import, negative for export).
+monthly billing cycle auto-resets, HA Energy Dashboard compatibility, single
+bidirectional net grid sensor support, and strict Thailand Standard Time (Asia/Bangkok)
+timezone TOU peak/off-peak resolution.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import math
 from typing import Any
+import zoneinfo
 
 import holidays
 
@@ -83,29 +85,29 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.export_sensor_id: str = entry.data.get(CONF_GRID_EXPORT_SENSOR, self.import_sensor_id)
         self.solar_sensor_id: str = entry.data[CONF_SOLAR_PROD_SENSOR]
 
-        # Flag indicating single bidirectional net grid sensor (import == export sensor)
+        # Single bidirectional net grid sensor flag
         self.is_single_bidirectional_sensor: bool = (self.import_sensor_id == self.export_sensor_id)
 
-        # Active Tariff Category (May auto-transition from 1.1 -> 1.2)
+        # Active Tariff Category
         self.active_tariff_category: str = entry.data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2)
 
-        # Thai Holiday Engine for TOU resolution
+        # Thai Holiday Engine
         self.th_holidays = holidays.TH()
 
-        # Last raw sensor readings for delta processing
+        # Last raw sensor readings
         self._last_raw_grid_val: float | None = None
         self._last_import_val: float | None = None
         self._last_export_val: float | None = None
         self._last_solar_val: float | None = None
         self._last_self_consumption_val: float | None = None
 
-        # Lifetime Continuous Accumulators (Never reset)
+        # Lifetime Continuous Accumulators
         self.lifetime_import_kwh: float = 0.0
         self.lifetime_export_kwh: float = 0.0
         self.lifetime_solar_kwh: float = 0.0
         self.lifetime_solar_savings_thb: float = 0.0
 
-        # Current Monthly Billing Cycle Accumulators (Auto-reset on billing day)
+        # Monthly Billing Cycle Accumulators
         self.monthly_import_kwh: float = 0.0
         self.monthly_export_kwh: float = 0.0
         self.monthly_solar_kwh: float = 0.0
@@ -170,14 +172,30 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass.async_create_task(self.async_refresh())
 
     def is_tou_offpeak(self, dt: datetime) -> bool:
-        """Evaluate if datetime falls within TOU Off-Peak window in Thailand."""
-        if dt.weekday() in (5, 6):
+        """Evaluate if datetime falls within TOU Off-Peak window in Thailand Standard Time.
+
+        Off-Peak rules (Strictly in Asia/Bangkok time):
+        - Monday through Friday 22:00 (10 PM) to 09:00 (9 AM)
+        - Entirety of Saturday and Sunday
+        - Official National Public Holidays in Thailand (holidays.TH)
+        """
+        # Convert datetime explicitly to Thailand Standard Time (Asia/Bangkok, UTC+7)
+        try:
+            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+            bkk_dt = dt.astimezone(bkk_tz)
+        except Exception:
+            bkk_dt = dt.astimezone(timezone(timedelta(hours=7)))
+
+        # Saturday (5) or Sunday (6)
+        if bkk_dt.weekday() in (5, 6):
             return True
 
-        if dt.date() in self.th_holidays:
+        # Official Public Holiday
+        if bkk_dt.date() in self.th_holidays:
             return True
 
-        if dt.hour >= 22 or dt.hour < 9:
+        # Weekday hour checks: Off-Peak is 22:00 (10 PM) to 09:00 (9 AM)
+        if bkk_dt.hour >= 22 or bkk_dt.hour < 9:
             return True
 
         return False
@@ -220,7 +238,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _check_monthly_reset(self, now: datetime) -> None:
         """Check if today matches the user's billing cycle start day and reset accumulators."""
         target_billing_day = int(self.config_data.get(CONF_BILLING_DAY, 1))
-        today = now.date()
+        
+        try:
+            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+            today = now.astimezone(bkk_tz).date()
+        except Exception:
+            today = now.date()
 
         if self.last_reset_date is None:
             self.last_reset_date = today
@@ -307,7 +330,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         delta_export = 0.0
 
         if self.is_single_bidirectional_sensor:
-            # Single bidirectional grid sensor (Positive = Import, Negative = Export)
             try:
                 raw_grid = float(import_state.state) if import_state and import_state.state not in ("unavailable", "unknown") else None
             except (ValueError, TypeError):
@@ -322,7 +344,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         delta_export = abs(grid_delta)
                 self._last_raw_grid_val = raw_grid
 
-                # Also handle signed instantaneous reading
                 curr_import = max(0.0, raw_grid)
                 curr_export = abs(min(0.0, raw_grid))
             else:
@@ -330,7 +351,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 curr_export = self._last_export_val or 0.0
 
         else:
-            # Separate distinct import and export sensors
             try:
                 curr_import = float(import_state.state) if import_state and import_state.state not in ("unavailable", "unknown") else None
                 curr_export = float(export_state.state) if export_state and export_state.state not in ("unavailable", "unknown") else None
@@ -394,7 +414,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         marginal_rate = self.get_marginal_rate(category, self.monthly_import_kwh, is_offpeak)
         ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
         
-        # Dedicated HA Energy Dashboard compatible current grid price (marginal rate + Ft)
         current_grid_price = marginal_rate + ft_rate
 
         delta_savings = delta_sc * marginal_rate
