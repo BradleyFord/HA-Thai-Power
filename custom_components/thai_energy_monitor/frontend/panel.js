@@ -1,6 +1,7 @@
 /**
- * Thailand Energy & Solar Monitor - Custom Sidebar Web Component Dashboard
- * Built with Lit framework standards, multi-tab layout, SVG visualizations, and glassmorphic UI.
+ * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
+ * Uses official Home Assistant theme styling tokens, stable cards (no bouncing animations),
+ * interactive tab navigation event listeners, and accurate TOU status resolution.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -21,9 +22,10 @@ class ThaiEnergyPanel extends HTMLElement {
     if (!this._hass) return;
 
     const states = this._hass.states;
-    const findEntityValue = (key) => {
+
+    const getEntityState = (key) => {
       for (const entityId in states) {
-        if (entityId.includes('thai_energy_monitor') && entityId.includes(key)) {
+        if (entityId.includes(key)) {
           return states[entityId].state;
         }
       }
@@ -32,41 +34,44 @@ class ThaiEnergyPanel extends HTMLElement {
 
     const getAttribute = (key, attr) => {
       for (const entityId in states) {
-        if (entityId.includes('thai_energy_monitor') && entityId.includes(key)) {
+        if (entityId.includes(key)) {
           return states[entityId].attributes ? states[entityId].attributes[attr] : null;
         }
       }
       return null;
     };
 
+    const touStatus = getEntityState('tou_window_status') || getAttribute('monthly_estimated_bill', 'tou_status') || 'Off-Peak';
+
     this._data = {
-      totalBill: findEntityValue('monthly_estimated_bill') || findEntityValue('total_estimated_bill'),
-      baseCost: findEntityValue('monthly_base_cost') || findEntityValue('base_cost'),
-      ftCharge: findEntityValue('monthly_ft_charge') || findEntityValue('ft_charge'),
-      serviceCharge: findEntityValue('monthly_service_charge') || findEntityValue('service_charge'),
-      vatAmount: findEntityValue('monthly_vat_amount') || findEntityValue('vat_amount'),
-      importKwh: findEntityValue('monthly_import_kwh') || findEntityValue('import_kwh'),
-      exportKwh: findEntityValue('monthly_export_kwh') || findEntityValue('export_kwh'),
-      solarKwh: findEntityValue('monthly_solar_kwh') || findEntityValue('solar_kwh'),
-      solarSavings: findEntityValue('monthly_solar_savings') || findEntityValue('solar_savings'),
-      solarRevenue: findEntityValue('monthly_solar_revenue') || findEntityValue('solar_revenue'),
-      totalSolarBenefit: findEntityValue('monthly_total_solar_benefit') || findEntityValue('total_solar_benefit'),
-      lifetimeBenefit: findEntityValue('lifetime_total_solar_benefit') || findEntityValue('lifetime_benefit'),
-      marginalRate: findEntityValue('active_marginal_retail_rate') || findEntityValue('marginal_rate'),
-      gridPrice: findEntityValue('current_grid_energy_import_price') || findEntityValue('current_grid_price'),
-      ftRate: findEntityValue('current_ft_adjustment_rate') || findEntityValue('ft_rate'),
-      sellbackRate: findEntityValue('solar_buy_back_rate') || findEntityValue('sellback_rate'),
-      tariffDiff: findEntityValue('predictive_tariff_difference') || findEntityValue('tariff_diff'),
-      bessSavings: findEntityValue('bess_storage_simulated_savings') || findEntityValue('bess_savings'),
-      meaPoints: findEntityValue('mea_virtual_points_balance') || findEntityValue('mea_points'),
-      meaCash: findEntityValue('mea_points_cash_value') || findEntityValue('mea_cash'),
-      outageCost: findEntityValue('grid_outage_economic_cost') || findEntityValue('outage_cost'),
-      outageCount: findEntityValue('grid_outage_incident_count') || findEntityValue('outage_count'),
-      lastMonthBill: findEntityValue('last_month_bill_thb') || getAttribute('monthly_estimated_bill', 'last_month_bill_thb') || '0.00',
-      lastMonthImport: findEntityValue('last_month_import_kwh') || getAttribute('monthly_estimated_bill', 'last_month_import_kwh') || '0.00',
+      touStatus: touStatus,
+      isOffpeak: touStatus.toLowerCase().includes('off'),
+      totalBill: getEntityState('monthly_estimated_bill'),
+      baseCost: getEntityState('monthly_base_cost'),
+      ftCharge: getEntityState('monthly_ft_charge'),
+      serviceCharge: getEntityState('monthly_service_charge'),
+      vatAmount: getEntityState('monthly_vat_amount'),
+      importKwh: getEntityState('monthly_import_kwh'),
+      exportKwh: getEntityState('monthly_export_kwh'),
+      solarKwh: getEntityState('monthly_solar_kwh'),
+      solarSavings: getEntityState('monthly_solar_savings'),
+      solarRevenue: getEntityState('monthly_solar_revenue'),
+      totalSolarBenefit: getEntityState('monthly_total_solar_benefit'),
+      lifetimeBenefit: getEntityState('lifetime_total_solar_benefit'),
+      marginalRate: getEntityState('active_marginal_retail_rate') || getEntityState('marginal_rate'),
+      gridPrice: getEntityState('current_grid_energy_import_price') || getEntityState('current_grid_price'),
+      ftRate: getEntityState('current_ft_adjustment_rate') || getEntityState('ft_rate'),
+      sellbackRate: getEntityState('solar_buy_back_rate') || getEntityState('sellback_rate'),
+      tariffDiff: getEntityState('predictive_tariff_difference') || getEntityState('tariff_diff'),
+      bessSavings: getEntityState('bess_storage_simulated_savings') || getEntityState('bess_savings'),
+      meaPoints: getEntityState('mea_virtual_points_balance') || getEntityState('mea_points'),
+      meaCash: getEntityState('mea_points_cash_value') || getEntityState('mea_cash'),
+      outageCost: getEntityState('grid_outage_economic_cost') || getEntityState('outage_cost'),
+      outageCount: getEntityState('grid_outage_incident_count') || getEntityState('outage_count'),
+      lastMonthBill: getEntityState('last_month_bill_thb') || getAttribute('monthly_estimated_bill', 'last_month_bill_thb') || '0.00',
+      lastMonthImport: getEntityState('last_month_import_kwh') || getAttribute('monthly_estimated_bill', 'last_month_import_kwh') || '0.00',
       provider: getAttribute('monthly_estimated_bill', 'utility_provider') || 'MEA',
       tariffCategory: getAttribute('monthly_estimated_bill', 'tariff_category') || '1.2',
-      isOffpeak: getAttribute('monthly_estimated_bill', 'is_offpeak'),
       opposingTariffName: getAttribute('monthly_estimated_bill', 'opposing_tariff_name') || 'TOU 1.3.2',
     };
 
@@ -78,20 +83,33 @@ class ThaiEnergyPanel extends HTMLElement {
     this.render();
   }
 
+  _attachEvents() {
+    const shadow = this.shadowRoot;
+    const tabBtns = shadow.querySelectorAll('.tab-btn');
+    tabBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const tab = e.currentTarget.getAttribute('data-tab');
+        if (tab) {
+          this._switchTab(tab);
+        }
+      });
+    });
+  }
+
   render() {
     const d = this._data;
-    const isOffpeak = Boolean(d.isOffpeak);
+    const isOffpeak = d.isOffpeak;
     const offpeakBadge = isOffpeak
-      ? `<span class="badge offpeak">Off-Peak Window (Off-Peak Rate Active)</span>`
-      : `<span class="badge peak">Peak Window (Peak Rate Active)</span>`;
+      ? `<span class="badge offpeak">Off-Peak Window</span>`
+      : `<span class="badge peak">Peak Window</span>`;
 
     const diffVal = parseFloat(d.tariffDiff || '0');
     const diffClass = diffVal >= 0 ? 'saving' : 'warning';
     const diffText = diffVal >= 0
-      ? `฿${Math.abs(diffVal).toFixed(2)} Estimated Monthly Savings`
+      ? `฿${Math.abs(diffVal).toFixed(2)} Savings vs ${d.opposingTariffName}`
       : `฿${Math.abs(diffVal).toFixed(2)} Higher than ${d.opposingTariffName}`;
 
-    // Calculate itemized percentage bars for visual chart
+    // Itemized percentages
     const totalBillNum = Math.max(1, parseFloat(d.totalBill) || 1);
     const basePct = Math.min(100, Math.round(((parseFloat(d.baseCost) || 0) / totalBillNum) * 100));
     const ftPct = Math.min(100, Math.round(((parseFloat(d.ftCharge) || 0) / totalBillNum) * 100));
@@ -101,10 +119,10 @@ class ThaiEnergyPanel extends HTMLElement {
       <style>
         :host {
           display: block;
-          padding: 24px;
-          background-color: var(--primary-background-color, #0b0f19);
-          color: var(--primary-text-color, #f1f5f9);
-          font-family: var(--paper-font-body1_-_font-family, 'Inter', Roboto, sans-serif);
+          padding: 20px;
+          background-color: var(--primary-background-color, #111111);
+          color: var(--primary-text-color, #e1e1e1);
+          font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
           box-sizing: border-box;
           min-height: 100vh;
         }
@@ -113,192 +131,171 @@ class ThaiEnergyPanel extends HTMLElement {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
-          backdrop-filter: blur(12px);
-          padding: 24px 28px;
-          border-radius: 16px;
-          margin-bottom: 24px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+          background-color: var(--card-background-color, var(--ha-card-background, #1c1c1e));
+          padding: 20px;
+          border-radius: 12px;
+          margin-bottom: 20px;
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
         }
 
         .header h1 {
           margin: 0;
-          font-size: 24px;
-          font-weight: 700;
-          background: linear-gradient(90deg, #38bdf8, #818cf8);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+          font-size: 22px;
+          font-weight: 600;
+          color: var(--primary-text-color, #ffffff);
         }
 
         .header .subtitle {
-          font-size: 14px;
-          color: #94a3b8;
-          margin-top: 6px;
+          font-size: 13px;
+          color: var(--secondary-text-color, #9e9e9e);
+          margin-top: 4px;
         }
 
         .badge {
-          padding: 8px 16px;
-          border-radius: 30px;
-          font-size: 13px;
+          padding: 6px 14px;
+          border-radius: 20px;
+          font-size: 12px;
           font-weight: 600;
-          letter-spacing: 0.5px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+          text-transform: uppercase;
         }
 
         .badge.offpeak {
-          background: linear-gradient(135deg, #059669, #10b981);
-          color: #ecfdf5;
+          background-color: var(--success-color, #4caf50);
+          color: #ffffff;
         }
 
         .badge.peak {
-          background: linear-gradient(135deg, #dc2626, #ef4444);
-          color: #fef2f2;
+          background-color: var(--error-color, var(--warning-color, #f44336));
+          color: #ffffff;
         }
 
-        /* Nav Tabs */
+        /* Navigation Tabs */
         .tabs {
           display: flex;
-          gap: 12px;
-          margin-bottom: 24px;
-          border-bottom: 1px solid #334155;
-          padding-bottom: 12px;
+          gap: 8px;
+          margin-bottom: 20px;
+          border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          padding-bottom: 10px;
         }
 
         .tab-btn {
-          background: rgba(30, 41, 59, 0.5);
-          border: 1px solid #334155;
-          color: #94a3b8;
-          padding: 10px 20px;
-          border-radius: 10px;
+          background-color: var(--card-background-color, var(--ha-card-background, #1c1c1e));
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          color: var(--secondary-text-color, #9e9e9e);
+          padding: 10px 18px;
+          border-radius: 8px;
           cursor: pointer;
-          font-weight: 600;
+          font-weight: 500;
           font-size: 14px;
-          transition: all 0.2s ease-in-out;
         }
 
         .tab-btn:hover {
-          background: rgba(51, 65, 85, 0.8);
-          color: #f8fafc;
+          color: var(--primary-text-color, #ffffff);
+          background-color: var(--secondary-background-color, #2c2c2e);
         }
 
         .tab-btn.active {
-          background: linear-gradient(135deg, #0284c7, #2563eb);
+          background-color: var(--primary-color, #03a9f4);
           color: #ffffff;
-          border-color: #38bdf8;
-          box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+          border-color: var(--primary-color, #03a9f4);
+          font-weight: 600;
         }
 
-        /* Layout Grids */
+        /* Grid Layout */
         .grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 24px;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 20px;
         }
 
         .card {
-          background: rgba(30, 41, 59, 0.7);
-          backdrop-filter: blur(16px);
-          border-radius: 16px;
-          padding: 24px;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.3);
-          transition: transform 0.2s ease;
-        }
-
-        .card:hover {
-          transform: translateY(-2px);
+          background-color: var(--card-background-color, var(--ha-card-background, #1c1c1e));
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          /* Stationary cards - no hover transform bouncing */
         }
 
         .card h2 {
           margin-top: 0;
-          font-size: 17px;
-          color: #f8fafc;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          padding-bottom: 12px;
+          font-size: 16px;
+          font-weight: 500;
+          color: var(--primary-text-color, #ffffff);
+          border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          padding-bottom: 10px;
           display: flex;
           justify-content: space-between;
           align-items: center;
         }
 
         .metric-main {
-          font-size: 40px;
-          font-weight: 800;
-          color: #38bdf8;
-          margin: 16px 0;
-          letter-spacing: -1px;
+          font-size: 34px;
+          font-weight: 700;
+          color: var(--primary-color, #03a9f4);
+          margin: 14px 0;
         }
 
         .table-rows {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 10px;
           font-size: 14px;
         }
 
         .row {
           display: flex;
           justify-content: space-between;
-          padding: 6px 0;
-          border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+          padding: 4px 0;
+          border-bottom: 1px dashed var(--divider-color, rgba(255, 255, 255, 0.08));
         }
 
         .row .label {
-          color: #94a3b8;
+          color: var(--secondary-text-color, #9e9e9e);
         }
 
         .row .val {
-          font-weight: 600;
-          color: #f1f5f9;
+          font-weight: 500;
+          color: var(--primary-text-color, #ffffff);
         }
 
-        .saving { color: #34d399 !important; }
-        .warning { color: #f87171 !important; }
-        .highlight { color: #fbbf24 !important; }
-        .accent { color: #a78bfa !important; }
+        .saving { color: var(--success-color, #4caf50) !important; }
+        .warning { color: var(--error-color, var(--warning-color, #f44336)) !important; }
+        .highlight { color: var(--state-sensor-color, #ff9800) !important; }
+        .accent { color: var(--accent-color, #e91e63) !important; }
 
-        /* Progress & Chart Bars */
         .progress-container {
-          margin-top: 16px;
+          margin-top: 14px;
         }
 
         .bar-label {
           display: flex;
           justify-content: space-between;
           font-size: 12px;
-          color: #94a3b8;
+          color: var(--secondary-text-color, #9e9e9e);
           margin-bottom: 4px;
         }
 
         .bar-bg {
-          height: 10px;
-          background: #0f172a;
-          border-radius: 6px;
+          height: 8px;
+          background-color: var(--secondary-background-color, #2c2c2e);
+          border-radius: 4px;
           overflow: hidden;
           display: flex;
         }
 
         .bar-segment {
           height: 100%;
-          transition: width 0.4s ease;
         }
 
-        .seg-base { background: #38bdf8; }
-        .seg-ft { background: #fbbf24; }
-        .seg-vat { background: #f472b6; }
-
-        /* SVG Chart Visualization */
-        .chart-svg {
-          width: 100%;
-          height: 160px;
-          margin-top: 16px;
-        }
+        .seg-base { background-color: var(--primary-color, #03a9f4); }
+        .seg-ft { background-color: var(--warning-color, #ff9800); }
+        .seg-vat { background-color: var(--accent-color, #e91e63); }
 
         .footer-note {
-          margin-top: 36px;
+          margin-top: 30px;
           text-align: center;
-          font-size: 13px;
-          color: #64748b;
+          font-size: 12px;
+          color: var(--secondary-text-color, #9e9e9e);
         }
       </style>
 
@@ -314,16 +311,16 @@ class ThaiEnergyPanel extends HTMLElement {
 
       <!-- Navigation Tabs -->
       <div class="tabs">
-        <button class="tab-btn ${this._activeTab === 'overview' ? 'active' : ''}" @click="${() => this._switchTab('overview')}">
+        <button class="tab-btn ${this._activeTab === 'overview' ? 'active' : ''}" data-tab="overview">
           Billing Overview
         </button>
-        <button class="tab-btn ${this._activeTab === 'solar' ? 'active' : ''}" @click="${() => this._switchTab('solar')}">
+        <button class="tab-btn ${this._activeTab === 'solar' ? 'active' : ''}" data-tab="solar">
           Solar ROI & BESS
         </button>
-        <button class="tab-btn ${this._activeTab === 'predictive' ? 'active' : ''}" @click="${() => this._switchTab('predictive')}">
+        <button class="tab-btn ${this._activeTab === 'predictive' ? 'active' : ''}" data-tab="predictive">
           Tariff Optimizer
         </button>
-        <button class="tab-btn ${this._activeTab === 'reliability' ? 'active' : ''}" @click="${() => this._switchTab('reliability')}">
+        <button class="tab-btn ${this._activeTab === 'reliability' ? 'active' : ''}" data-tab="reliability">
           Rewards & Outages
         </button>
       </div>
@@ -332,7 +329,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ${this._activeTab === 'overview' ? `
         <div class="grid">
           <div class="card">
-            <h2>Current Monthly Estimated Bill <span>(THB)</span></h2>
+            <h2>Monthly Estimated Bill <span>(THB)</span></h2>
             <div class="metric-main">฿${d.totalBill}</div>
             <div class="table-rows">
               <div class="row">
@@ -340,7 +337,7 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val">฿${d.baseCost}</span>
               </div>
               <div class="row">
-                <span class="label">Accumulated Ft Charge (${d.ftRate} ฿/kWh)</span>
+                <span class="label">Ft Charge (${d.ftRate} ฿/kWh)</span>
                 <span class="val">฿${d.ftCharge}</span>
               </div>
               <div class="row">
@@ -353,7 +350,6 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
             </div>
 
-            <!-- Breakdown Visual Bar -->
             <div class="progress-container">
               <div class="bar-label">
                 <span>Base (${basePct}%)</span>
@@ -369,8 +365,8 @@ class ThaiEnergyPanel extends HTMLElement {
           </div>
 
           <div class="card">
-            <h2>Monthly Energy Consumption Profile</h2>
-            <div class="metric-main" style="color: #60a5fa;">${d.importKwh} <span style="font-size: 20px;">kWh</span></div>
+            <h2>Monthly Consumption Profile</h2>
+            <div class="metric-main" style="color: var(--primary-color, #03a9f4);">${d.importKwh} <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Active Marginal Retail Rate</span>
@@ -393,11 +389,11 @@ class ThaiEnergyPanel extends HTMLElement {
       ${this._activeTab === 'solar' ? `
         <div class="grid">
           <div class="card">
-            <h2>Monthly Solar Net Benefit (Net Billing)</h2>
+            <h2>Monthly Solar Net Benefit</h2>
             <div class="metric-main saving">฿${d.totalSolarBenefit}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Self-Consumption Savings (Riemann Integration)</span>
+                <span class="label">Self-Consumption Savings</span>
                 <span class="val saving">฿${d.solarSavings}</span>
               </div>
               <div class="row">
@@ -425,7 +421,7 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Simulation Strategy</span>
-                <span class="val">Day Solar Storage &rarr; Peak Evening Discharge</span>
+                <span class="val">Solar Storage &rarr; Peak Discharge</span>
               </div>
               <div class="row">
                 <span class="label">Lifetime Solar Benefit</span>
@@ -465,7 +461,7 @@ class ThaiEnergyPanel extends HTMLElement {
         <div class="grid">
           <div class="card">
             <h2>MEA Rewards Gamification</h2>
-            <div class="metric-main accent">${d.meaPoints} <span style="font-size: 22px;">Points</span></div>
+            <div class="metric-main accent">${d.meaPoints} <span style="font-size: 20px;">Points</span></div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Cash Fiat Discount Equivalent</span>
@@ -483,7 +479,7 @@ class ThaiEnergyPanel extends HTMLElement {
             <div class="metric-main warning">฿${d.outageCost}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Recorded Outage Incidents</span>
+                <span class="label">Outage Incidents</span>
                 <span class="val warning">${d.outageCount} events</span>
               </div>
               <div class="row">
@@ -496,9 +492,11 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.0.3 &bull; HACS Custom Integration
+        Thailand Energy & Solar Monitor v1.0.4 &bull; Home Assistant Integration
       </div>
     `;
+
+    this._attachEvents();
   }
 }
 

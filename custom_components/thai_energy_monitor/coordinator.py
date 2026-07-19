@@ -179,22 +179,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         - Entirety of Saturday and Sunday
         - Official National Public Holidays in Thailand (holidays.TH)
         """
-        # Convert datetime explicitly to Thailand Standard Time (Asia/Bangkok, UTC+7)
         try:
             bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
             bkk_dt = dt.astimezone(bkk_tz)
         except Exception:
             bkk_dt = dt.astimezone(timezone(timedelta(hours=7)))
 
-        # Saturday (5) or Sunday (6)
         if bkk_dt.weekday() in (5, 6):
             return True
 
-        # Official Public Holiday
         if bkk_dt.date() in self.th_holidays:
             return True
 
-        # Weekday hour checks: Off-Peak is 22:00 (10 PM) to 09:00 (9 AM)
         if bkk_dt.hour >= 22 or bkk_dt.hour < 9:
             return True
 
@@ -252,19 +248,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if today.day == target_billing_day and today != self.last_reset_date:
             _LOGGER.info("Executing monthly billing cycle reset on day %d", target_billing_day)
             
-            # Archive previous month statistics
             if self.data:
                 self.last_month_bill_thb = self.data.get("monthly_estimated_bill", 0.0)
             self.last_month_import_kwh = self.monthly_import_kwh
 
-            # Auto-accumulate monthly MEA points if enrolled
             if self.config_data.get(CONF_UTILITY_PROVIDER) == PROVIDER_MEA:
                 if self.config_data.get(CONF_MEA_EBILL, False):
                     self.mea_points += MEA_POINTS_EBILL_MONTHLY
                 if self.config_data.get(CONF_MEA_EPAYMENT, False):
                     self.mea_points += MEA_POINTS_EPAYMENT_MONTHLY
 
-            # Check Tariff 1.1 >150 kWh threshold transition rule
             if self.active_tariff_category == TARIFF_1_1:
                 if self.monthly_import_kwh > 150.0:
                     self.consecutive_high_months += 1
@@ -287,7 +280,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         notification_id="thai_energy_auto_tariff_switch",
                     )
 
-            # Reset current monthly accumulators
             self.monthly_import_kwh = 0.0
             self.monthly_export_kwh = 0.0
             self.monthly_solar_kwh = 0.0
@@ -303,15 +295,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = dt_util.now()
         is_offpeak = self.is_tou_offpeak(now)
 
-        # Monthly reset evaluation
         self._check_monthly_reset(now)
 
-        # Read source sensor states
         import_state = self.hass.states.get(self.import_sensor_id)
         export_state = self.hass.states.get(self.export_sensor_id) if not self.is_single_bidirectional_sensor else import_state
         solar_state = self.hass.states.get(self.solar_sensor_id)
 
-        # Grid Outage Tracking
         if import_state is None or import_state.state in ("unavailable", "unknown"):
             if not self.is_grid_outage:
                 self.is_grid_outage = True
@@ -371,7 +360,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 delta_export = curr_export - self._last_export_val
             self._last_export_val = curr_export
 
-        # Solar Sensor Reading
         try:
             curr_solar = float(solar_state.state) if solar_state and solar_state.state not in ("unavailable", "unknown") else None
         except (ValueError, TypeError):
@@ -385,7 +373,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             delta_solar = curr_solar - self._last_solar_val
         self._last_solar_val = curr_solar
 
-        # Accumulate lifetime and monthly volumes
         self.lifetime_import_kwh += delta_import
         self.monthly_import_kwh += delta_import
 
@@ -395,7 +382,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.lifetime_solar_kwh += delta_solar
         self.monthly_solar_kwh += delta_solar
 
-        # TOU Peak vs Off-Peak Import energy volumes
         if is_offpeak:
             self.monthly_tou_offpeak_import_kwh += delta_import
             self.phantom_tou_offpeak_kwh += delta_import
@@ -403,7 +389,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.monthly_tou_peak_import_kwh += delta_import
             self.phantom_tou_peak_kwh += delta_import
 
-        # Solar Riemann Sum Savings Approximation
         curr_self_consumption = max(0.0, curr_solar - curr_export)
         delta_sc = 0.0
         if self._last_self_consumption_val is not None and curr_self_consumption >= self._last_self_consumption_val:
@@ -420,7 +405,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.lifetime_solar_savings_thb += delta_savings
         self.monthly_solar_savings_thb += delta_savings
 
-        # Solar Revenue & Total Solar Net Benefit
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
         monthly_solar_revenue_thb = self.monthly_export_kwh * sellback_rate
         monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + monthly_solar_revenue_thb
@@ -428,7 +412,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lifetime_solar_revenue_thb = self.lifetime_export_kwh * sellback_rate
         lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + lifetime_solar_revenue_thb
 
-        # Base Cost & Monthly Estimated Bill
         monthly_ft_charge = self.monthly_import_kwh * ft_rate
         base_cost = 0.0
         service_charge = 38.22
@@ -460,7 +443,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         vat_amount = subtotal * VAT_RATE
         monthly_estimated_bill = subtotal + vat_amount
 
-        # Predictive Tariff Comparison Engine
         if category in (TARIFF_1_1, TARIFF_1_2):
             phantom_base = (self.phantom_tou_peak_kwh * TARIFF_1_3_2_PEAK) + (
                 self.phantom_tou_offpeak_kwh * TARIFF_1_3_2_OFFPEAK
@@ -476,7 +458,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
 
-        # BESS Simulation
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
         if delta_export > 0 and not is_offpeak:
             self.bess_charged_kwh = min(bess_capacity, self.bess_charged_kwh + delta_export)
@@ -486,12 +467,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             peak_rate = TARIFF_1_3_2_PEAK if category == TARIFF_1_3_2 else TARIFF_1_2_TIERS[-1][2]
             self.bess_simulated_savings_thb += discharged * (peak_rate - sellback_rate)
 
-        # MEA Gamification Points & Outages
         mea_points_cash_value = self.mea_points * MEA_POINT_CASH_CONVERSION
         outage_hours = self.total_outage_seconds / 3600.0
         economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
 
         return {
+            "tou_window_status": "Off-Peak" if is_offpeak else "Peak",
             # Monthly Resetting Entities
             "monthly_estimated_bill": round(monthly_estimated_bill, 2),
             "monthly_base_cost": round(base_cost, 2),

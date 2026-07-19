@@ -35,6 +35,11 @@ async def async_setup_entry(
     coordinator: ThaiEnergyDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities: list[SensorEntity] = [
+        # --- Dedicated TOU Window Status Entity ---
+        ThaiEnergyCostSensor(
+            coordinator, entry, "tou_window_status", "TOU Window Status", None, None, None
+        ),
+
         # --- Dedicated HA Energy Dashboard Compatibility Entity ---
         ThaiEnergyCostSensor(
             coordinator, entry, "current_grid_price", "Current Grid Energy Import Price", "THB/kWh", SensorDeviceClass.MONETARY, SensorStateClass.MEASUREMENT
@@ -167,9 +172,9 @@ class ThaiEnergyCostSensor(
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in ("unavailable", "unknown"):
             try:
-                self._restored_native_value = float(last_state.state)
+                self._restored_native_value = float(last_state.state) if self.key != "tou_window_status" else last_state.state
             except ValueError:
-                pass
+                self._restored_native_value = last_state.state
 
     @property
     def native_value(self) -> Any:
@@ -187,6 +192,7 @@ class ThaiEnergyCostSensor(
             "utility_provider": self.entry.data.get("utility_provider"),
             "tariff_category": self.coordinator.data.get("active_tariff_category"),
             "is_offpeak": self.coordinator.data.get("is_offpeak"),
+            "tou_status": "Off-Peak" if self.coordinator.data.get("is_offpeak") else "Peak",
             "opposing_tariff_name": self.coordinator.data.get("opposing_tariff_name"),
             "last_month_bill_thb": self.coordinator.data.get("last_month_bill_thb"),
             "last_month_import_kwh": self.coordinator.data.get("last_month_import_kwh"),
