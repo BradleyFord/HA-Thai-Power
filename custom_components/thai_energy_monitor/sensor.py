@@ -196,4 +196,7 @@ class ThaiEnergyCostSensor(
             "opposing_tariff_name": self.coordinator.data.get("opposing_tariff_name"),
             "last_month_bill_thb": self.coordinator.data.get("last_month_bill_thb"),
             "last_month_import_kwh": self.coordinator.data.get("last_month_import_kwh"),
+            "import_sensor_id": self.coordinator.import_sensor_id,
+            "export_sensor_id": self.coordinator.export_sensor_id,
+            "solar_sensor_id": self.coordinator.solar_sensor_id,
         }

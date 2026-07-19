@@ -38,20 +38,50 @@ class ThaiEnergyPanel extends HTMLElement {
   async _fetchHistoryData() {
     if (!this._hass) return;
 
-    let importEntityId = null;
-    let solarEntityId = null;
-    let exportEntityId = null;
-
     const states = this._hass.states;
-    for (const id in states) {
-      if (!importEntityId && (id.includes('monthly_grid_import_energy') || id.includes('monthly_import_kwh') || id.includes('grid_import_energy'))) {
-        importEntityId = id;
+
+    const getAttribute = (possibleKeys, attr) => {
+      const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
+      for (const key of keys) {
+        for (const entityId in states) {
+          if (entityId.includes(key)) {
+            if (states[entityId].attributes && states[entityId].attributes[attr] !== undefined) {
+              return states[entityId].attributes[attr];
+            }
+          }
+        }
       }
-      if (!solarEntityId && (id.includes('monthly_solar_production_energy') || id.includes('monthly_solar_kwh') || id.includes('solar_production_energy'))) {
-        solarEntityId = id;
+      return null;
+    };
+
+    let importEntityId = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh', 'monthly_grid_import_energy'], 'import_sensor_id');
+    let solarEntityId = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh', 'monthly_solar_production_energy'], 'solar_sensor_id');
+    let exportEntityId = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh', 'monthly_grid_export_energy'], 'export_sensor_id');
+
+    if (!importEntityId) {
+      for (const id in states) {
+        if (id.includes('monthly_grid_import_energy') || id.includes('monthly_import_kwh') || id.includes('grid_import_energy')) {
+          importEntityId = id;
+          break;
+        }
       }
-      if (!exportEntityId && (id.includes('monthly_grid_export_energy') || id.includes('monthly_export_kwh') || id.includes('grid_export_energy'))) {
-        exportEntityId = id;
+    }
+
+    if (!solarEntityId) {
+      for (const id in states) {
+        if (id.includes('monthly_solar_production_energy') || id.includes('monthly_solar_kwh') || id.includes('solar_production_energy')) {
+          solarEntityId = id;
+          break;
+        }
+      }
+    }
+
+    if (!exportEntityId) {
+      for (const id in states) {
+        if (id.includes('monthly_grid_export_energy') || id.includes('monthly_export_kwh') || id.includes('grid_export_energy')) {
+          exportEntityId = id;
+          break;
+        }
       }
     }
 
@@ -262,7 +292,7 @@ class ThaiEnergyPanel extends HTMLElement {
       };
     });
 
-    // Generate 30-day Solar Monthly Trend Data for Line Chart (with correct per-day export scaling)
+    // Generate 30-day Solar Monthly Trend Data for Line Chart
     const dailySolcastAvg = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 35.0;
     const dailySolarAvg = Math.max(0.1, solarKwhNum / currentDay);
     const dailySelfAvg = Math.max(0.05, selfConsumedKwh / currentDay);
@@ -808,9 +838,9 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
           </div>
 
-          <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis & HA Statistics Engine -->
+          <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis & HA Source Sensor Statistics Engine -->
           <div class="card full-width">
-            <h2>Cumulative Monthly Running Bill Progression (HA Database Recorder Statistics)</h2>
+            <h2>Cumulative Monthly Running Bill Progression (Source Hardware Sensor LTS Statistics)</h2>
             <div class="chart-legend">
               <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service Charge</div>
               <div class="legend-item"><div class="legend-dot seg-base"></div> 2. Base Energy Charge</div>
@@ -851,7 +881,7 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
 
             <div class="note-box">
-              Non-linear actual daily consumption fetched directly from Home Assistant's <strong>recorder/statistics_during_period</strong> database for elapsed days, and projected forward for remaining days.
+              Non-linear actual daily consumption queried directly from your hardware source sensor's <strong>recorder/statistics_during_period</strong> database for elapsed days, and projected forward for remaining days.
             </div>
           </div>
         </div>
@@ -1073,7 +1103,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.1.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.1.4 &bull; Home Assistant Custom Integration
       </div>
     `;
 
