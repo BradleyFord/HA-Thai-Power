@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Thailand Energy & Solar Monitor Setup",
+        "description": "Configure your residential electricity tariff category, billing cycle, and source energy sensors.",
+        "data": {
+          "utility_provider": "Utility Provider (MEA / PEA)",
+          "tariff_category": "Tariff Category (1.1, 1.2, 1.3.1, 1.3.2)",
+          "billing_day": "Billing Cycle Start Day (1-31)",
+          "grid_import_sensor": "Grid Import Energy Sensor (kWh)",
+          "grid_export_sensor": "Grid Export Energy Sensor (kWh)",
+          "solar_prod_sensor": "Solar Production Energy Sensor (kWh)"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "An integration with these settings is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Thailand Energy Parameters",
+        "description": "Update active fuel adjustment charge (Ft), solar sell-back rate, BESS capacity, and MEA points setup.",
+        "data": {
+          "tariff_category": "Tariff Category",
+          "ft_rate": "Fuel Adjustment Charge (Ft) [THB/kWh]",
+          "solar_sellback_rate": "Solar Sell-back Rate [THB/kWh]",
+          "bess_capacity_kwh": "BESS Battery Capacity [kWh]",
+          "mea_ebill_active": "Enrolled in MEA e-Bill",
+          "mea_epayment_active": "Utilizing MEA e-Payment"
+        }
+      }
+    }
+  }
+}
