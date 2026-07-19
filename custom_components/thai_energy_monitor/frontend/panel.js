@@ -2,8 +2,8 @@
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
- * 30-day multi-trend SVG solar line chart, multi-pattern HA entity slug matching, and
- * direct Python coordinator baseline subtraction diagnostic panel with configured/associated sensor telemetry.
+ * 30-day multi-trend SVG solar line chart with solid historical vs dashed predicted segments,
+ * multi-pattern HA entity slug matching, and direct Python coordinator baseline subtraction diagnostic panel.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -70,8 +70,17 @@ class ThaiEnergyPanel extends HTMLElement {
     const getEntityState = (possibleKeys) => {
       const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
       for (const key of keys) {
+        // Try exact match first to prevent collision with other integrations
+        const exactId = key.startsWith('sensor.') ? key : 'sensor.' + key;
+        if (states[exactId]) {
+          const st = states[exactId].state;
+          if (st && st !== 'unavailable' && st !== 'unknown') {
+            return st;
+          }
+        }
+        // Fallback to strict suffix match
         for (const entityId in states) {
-          if (entityId.includes(key)) {
+          if (entityId.endsWith(key)) {
             const st = states[entityId].state;
             if (st && st !== 'unavailable' && st !== 'unknown') {
               return st;
@@ -85,8 +94,16 @@ class ThaiEnergyPanel extends HTMLElement {
     const getAttribute = (possibleKeys, attr) => {
       const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
       for (const key of keys) {
+        // Try exact match first
+        const exactId = key.startsWith('sensor.') ? key : 'sensor.' + key;
+        if (states[exactId]) {
+          if (states[exactId].attributes && states[exactId].attributes[attr] !== undefined) {
+            return states[exactId].attributes[attr];
+          }
+        }
+        // Fallback to suffix match
         for (const entityId in states) {
-          if (entityId.includes(key)) {
+          if (entityId.endsWith(key)) {
             if (states[entityId].attributes && states[entityId].attributes[attr] !== undefined) {
               return states[entityId].attributes[attr];
             }
@@ -125,14 +142,15 @@ class ThaiEnergyPanel extends HTMLElement {
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
-    const totalBill = getEntityState(['monthly_estimated_bill', 'estimated_bill', 'total_estimated_bill']);
-    const baseCost = getEntityState(['monthly_base_energy_cost', 'monthly_base_cost', 'base_energy_cost', 'base_cost']);
-    const ftCharge = getEntityState(['monthly_ft_charge', 'ft_charge', 'accumulated_ft']);
-    const serviceCharge = getEntityState(['monthly_fixed_service_charge', 'monthly_service_charge', 'fixed_service_charge', 'service_charge']);
-    const vatAmount = getEntityState(['monthly_calculated_vat', 'monthly_vat_amount', 'calculated_vat', 'vat_amount']);
-    const importKwh = getEntityState(['monthly_grid_import_energy', 'monthly_import_kwh', 'grid_import_energy', 'import_kwh']);
-    const exportKwh = getEntityState(['monthly_grid_export_energy', 'monthly_export_kwh', 'grid_export_energy', 'export_kwh']);
-    const solarKwh = getEntityState(['monthly_solar_production_energy', 'monthly_solar_kwh', 'solar_production_energy', 'solar_kwh']);
+    // Query exact sensor names to eliminate collision with any other integration sensors
+    const totalBill = getEntityState(['monthly_estimated_bill']);
+    const baseCost = getEntityState(['monthly_base_energy_cost']);
+    const ftCharge = getEntityState(['monthly_ft_charge']);
+    const serviceCharge = getEntityState(['monthly_fixed_service_charge']);
+    const vatAmount = getEntityState(['monthly_calculated_vat']);
+    const importKwh = getEntityState(['monthly_grid_import_energy']);
+    const exportKwh = getEntityState(['monthly_grid_export_energy']);
+    const solarKwh = getEntityState(['monthly_solar_production_energy']);
 
     const solarKwhNum = parseFloat(solarKwh) || 0;
     const exportKwhNum = parseFloat(exportKwh) || 0;
@@ -145,13 +163,13 @@ class ThaiEnergyPanel extends HTMLElement {
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
     // Extract Baseline Variables for Debug Diagnostic Panel
-    const importSensorId = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_sensor_id') || 'sensor.power_meter_consumption';
-    const exportSensorId = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'export_sensor_id') || 'sensor.power_meter_exported';
-    const solarSensorId = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_sensor_id') || 'sensor.inverter_total_yield';
+    const importSensorId = getAttribute(['monthly_estimated_bill'], 'import_sensor_id') || 'sensor.power_meter_consumption';
+    const exportSensorId = getAttribute(['monthly_estimated_bill'], 'export_sensor_id') || 'sensor.power_meter_exported';
+    const solarSensorId = getAttribute(['monthly_estimated_bill'], 'solar_sensor_id') || 'sensor.inverter_total_yield';
 
-    const importBaseline = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_baseline_kwh');
-    const solarBaseline = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_baseline_kwh');
-    const exportBaseline = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'export_baseline_kwh');
+    const importBaseline = getAttribute(['monthly_estimated_bill'], 'import_baseline_kwh');
+    const solarBaseline = getAttribute(['monthly_estimated_bill'], 'solar_baseline_kwh');
+    const exportBaseline = getAttribute(['monthly_estimated_bill'], 'export_baseline_kwh');
 
     const importCurrentReading = getEntityState([importSensorId]);
     const solarCurrentReading = getEntityState([solarSensorId]);
@@ -172,9 +190,9 @@ class ThaiEnergyPanel extends HTMLElement {
     const inverterPowerUnit = getUnit('sensor.inverter_active_power', 'W');
 
     // Extract 30-Day Historical Arrays from Python Coordinator Attributes
-    const pyImportHistory = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'daily_import_kwh_history') || [];
-    const pySolarHistory = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'daily_solar_kwh_history') || [];
-    const pyExportHistory = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'daily_export_kwh_history') || [];
+    const pyImportHistory = getAttribute(['monthly_estimated_bill'], 'daily_import_kwh_history') || [];
+    const pySolarHistory = getAttribute(['monthly_estimated_bill'], 'daily_solar_kwh_history') || [];
+    const pyExportHistory = getAttribute(['monthly_estimated_bill'], 'daily_export_kwh_history') || [];
 
     const today = new Date();
     const currentDay = Math.min(30, Math.max(1, today.getDate()));
@@ -249,27 +267,27 @@ class ThaiEnergyPanel extends HTMLElement {
       solarKwh: solarKwh,
       selfConsumedKwh: selfConsumedKwh.toFixed(2),
       selfConsumptionRatio: selfConsumptionRatio,
-      solarSavings: getEntityState(['monthly_solar_savings', 'solar_self_consumption_savings', 'solar_savings']),
-      solarRevenue: getEntityState(['monthly_solar_export_revenue', 'monthly_solar_revenue', 'solar_export_revenue', 'solar_revenue']),
-      totalSolarBenefit: getEntityState(['monthly_total_solar_benefit', 'monthly_solar_net_benefit', 'total_solar_benefit', 'solar_net_benefit']),
-      lifetimeBenefit: getEntityState(['lifetime_total_solar_benefit', 'lifetime_solar_net_benefit']),
-      lifetimeImport: getEntityState(['lifetime_grid_import_energy', 'lifetime_import_kwh']),
-      lifetimeSolar: getEntityState(['lifetime_solar_production_energy', 'lifetime_solar_kwh']),
-      marginalRate: getEntityState(['active_marginal_retail_rate', 'marginal_rate']),
-      gridPrice: getEntityState(['current_grid_energy_import_price', 'current_grid_price']),
-      ftRate: getEntityState(['current_ft_adjustment_rate', 'ft_rate']),
-      sellbackRate: getEntityState(['solar_buy_back_rate', 'sellback_rate']),
-      tariffDiff: getEntityState(['predictive_tariff_difference', 'tariff_diff']),
-      bessSavings: getEntityState(['bess_storage_simulated_savings', 'bess_savings']),
-      meaPoints: getEntityState(['mea_virtual_points_balance', 'mea_points']),
-      meaCash: getEntityState(['mea_points_cash_value', 'mea_cash']),
-      outageCost: getEntityState(['grid_outage_economic_cost', 'outage_cost']),
-      outageCount: getEntityState(['grid_outage_incident_count', 'outage_count']),
-      lastMonthBill: getEntityState('last_month_bill_thb') || getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'last_month_bill_thb') || '0.00',
-      lastMonthImport: getEntityState('last_month_import_kwh') || getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'last_month_import_kwh') || '0.00',
-      provider: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'utility_provider') || 'MEA',
-      tariffCategory: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'tariff_category') || '1.2',
-      opposingTariffName: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'opposing_tariff_name') || 'TOU 1.3.2',
+      solarSavings: getEntityState(['monthly_solar_savings']),
+      solarRevenue: getEntityState(['monthly_solar_export_revenue']),
+      totalSolarBenefit: getEntityState(['monthly_total_solar_benefit']),
+      lifetimeBenefit: getEntityState(['lifetime_total_solar_benefit']),
+      lifetimeImport: getEntityState(['lifetime_grid_import_energy']),
+      lifetimeSolar: getEntityState(['lifetime_solar_production_energy']),
+      marginalRate: getEntityState(['marginal_rate']),
+      gridPrice: getEntityState(['current_grid_price']),
+      ftRate: getEntityState(['ft_rate']),
+      sellbackRate: getEntityState(['sellback_rate']),
+      tariffDiff: getEntityState(['tariff_diff']),
+      bessSavings: getEntityState(['bess_savings']),
+      meaPoints: getEntityState(['mea_points']),
+      meaCash: getEntityState(['mea_cash']),
+      outageCost: getEntityState(['outage_cost']),
+      outageCount: getEntityState(['outage_count']),
+      lastMonthBill: getEntityState('last_month_bill_thb') || getAttribute(['monthly_estimated_bill'], 'last_month_bill_thb') || '0.00',
+      lastMonthImport: getEntityState('last_month_import_kwh') || getAttribute(['monthly_estimated_bill'], 'last_month_import_kwh') || '0.00',
+      provider: getAttribute(['monthly_estimated_bill'], 'utility_provider') || 'MEA',
+      tariffCategory: getAttribute(['monthly_estimated_bill'], 'tariff_category') || '1.2',
+      opposingTariffName: getAttribute(['monthly_estimated_bill'], 'opposing_tariff_name') || 'TOU 1.3.2',
       basePct: basePct,
       ftPct: ftPct,
       vatPct: vatPct,
@@ -294,7 +312,7 @@ class ThaiEnergyPanel extends HTMLElement {
       solarUnit: solarUnit,
       exportUnit: exportUnit,
       currentDayOfCycle: currentDay,
-      billingResetDay: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'billing_day') || '1',
+      billingResetDay: getAttribute(['monthly_estimated_bill'], 'billing_day') || '1',
 
       // Additional User Configured Sensors
       pm2230Power: pm2230Power,
@@ -378,10 +396,31 @@ class ThaiEnergyPanel extends HTMLElement {
     const getX = (index) => (index * stepX).toFixed(1);
     const getY = (val) => (svgH - ((val / maxSolarKwh) * (svgH - 20))).toFixed(1);
 
+    // Dynamic Segmentation for Historical vs Predicted Segments
+    const currentDay = d.currentDayOfCycle;
+
+    const getPointsSegment = (trends, key, startIdx, endIdx) => {
+      const pts = [];
+      for (let i = startIdx; i <= endIdx; i++) {
+        if (trends[i]) {
+          pts.push(`${getX(i)},${getY(trends[i][key])}`);
+        }
+      }
+      return pts.join(' ');
+    };
+
+    // Solcast is theoretical max forecast for the entire month
     const pointsSolcast = d.solarMonthlyTrends.map((t, idx) => `${getX(idx)},${getY(t.solcast)}`).join(' ');
-    const pointsProd = d.solarMonthlyTrends.map((t, idx) => `${getX(idx)},${getY(t.production)}`).join(' ');
-    const pointsSelf = d.solarMonthlyTrends.map((t, idx) => `${getX(idx)},${getY(t.selfConsumption)}`).join(' ');
-    const pointsExport = d.solarMonthlyTrends.map((t, idx) => `${getX(idx)},${getY(t.export)}`).join(' ');
+
+    // Split Actual vs Predicted trends at the current cycle day boundary
+    const pointsProdPast = getPointsSegment(d.solarMonthlyTrends, 'production', 0, currentDay - 1);
+    const pointsProdFuture = getPointsSegment(d.solarMonthlyTrends, 'production', currentDay - 1, 29);
+
+    const pointsSelfPast = getPointsSegment(d.solarMonthlyTrends, 'selfConsumption', 0, currentDay - 1);
+    const pointsSelfFuture = getPointsSegment(d.solarMonthlyTrends, 'selfConsumption', currentDay - 1, 29);
+
+    const pointsExportPast = getPointsSegment(d.solarMonthlyTrends, 'export', 0, currentDay - 1);
+    const pointsExportFuture = getPointsSegment(d.solarMonthlyTrends, 'export', currentDay - 1, 29);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -996,9 +1035,9 @@ class ThaiEnergyPanel extends HTMLElement {
             <h2>Billing Month Solar Performance Trends (Solcast Max vs Actuals Line Chart)</h2>
             <div class="chart-legend">
               <div class="legend-item"><div class="legend-line-solcast"></div> 1. Solcast PV Forecast (Theoretical Max)</div>
-              <div class="legend-item"><div class="legend-line-prod"></div> 2. Actual Solar Production</div>
-              <div class="legend-item"><div class="legend-line-self"></div> 3. Internal Self-Consumption</div>
-              <div class="legend-item"><div class="legend-line-export"></div> 4. Grid Export</div>
+              <div class="legend-item"><div class="legend-line-prod"></div> 2. Actual Solar Production (Solid = History, Dashed = Future)</div>
+              <div class="legend-item"><div class="legend-line-self"></div> 3. Internal Self-Consumption (Solid = History, Dashed = Future)</div>
+              <div class="legend-item"><div class="legend-line-export"></div> 4. Grid Export (Solid = History, Dashed = Future)</div>
             </div>
 
             <div class="chart-wrapper">
@@ -1024,14 +1063,17 @@ class ThaiEnergyPanel extends HTMLElement {
                   <!-- Trend 1: Solcast PV Forecast (Theoretical Maximum - Dashed Line) -->
                   <polyline points="${pointsSolcast}" fill="none" stroke="var(--warning-color, #ff9800)" stroke-width="2.5" stroke-dasharray="6,4" />
 
-                  <!-- Trend 2: Actual Solar Production (Solid Green Line) -->
-                  <polyline points="${pointsProd}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="2.5" />
+                  <!-- Trend 2: Actual Solar Production (Past - Solid Green, Future - Dashed/Faded Green) -->
+                  ${pointsProdPast ? `<polyline points="${pointsProdPast}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="2.5" />` : ''}
+                  ${pointsProdFuture ? `<polyline points="${pointsProdFuture}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.4" />` : ''}
 
-                  <!-- Trend 3: Internal Self-Consumption (Solid Cyan Line) -->
-                  <polyline points="${pointsSelf}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.5" />
+                  <!-- Trend 3: Internal Self-Consumption (Past - Solid Cyan, Future - Dashed/Faded Cyan) -->
+                  ${pointsSelfPast ? `<polyline points="${pointsSelfPast}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.5" />` : ''}
+                  ${pointsSelfFuture ? `<polyline points="${pointsSelfFuture}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.4" />` : ''}
 
-                  <!-- Trend 4: Grid Export (Solid Pink Line) -->
-                  <polyline points="${pointsExport}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.5" />
+                  <!-- Trend 4: Grid Export (Past - Solid Pink, Future - Dashed/Faded Pink) -->
+                  ${pointsExportPast ? `<polyline points="${pointsExportPast}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.5" />` : ''}
+                  ${pointsExportFuture ? `<polyline points="${pointsExportFuture}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.4" />` : ''}
                 </svg>
 
                 <!-- X-Axis Labels (Days 1 to 30) -->
@@ -1053,6 +1095,7 @@ class ThaiEnergyPanel extends HTMLElement {
               <strong style="color: var(--success-color, #4caf50);">Actual Solar Production</strong> &bull;
               <strong style="color: var(--primary-color, #03a9f4);">Internal Self-Consumption</strong> &bull;
               <strong style="color: var(--accent-color, #e91e63);">Grid Export</strong>.
+              (Note: Solid lines indicate actual measured history, dashed/transparent lines indicate future run-rate prediction for the cycle).
             </div>
           </div>
         </div>
@@ -1146,7 +1189,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
