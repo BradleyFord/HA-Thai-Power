@@ -177,13 +177,6 @@ class ThaiEnergyCostSensor(
                 self._restored_native_value = last_state.state
 
     @property
-    def native_value(self) -> Any:
-        """Return the current state value calculated by the coordinator."""
-        if self.coordinator.data and self.key in self.coordinator.data:
-            return self.coordinator.data[self.key]
-        return self._restored_native_value
-
-    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional diagnostic state attributes."""
         if not self.coordinator.data:
@@ -199,7 +192,17 @@ class ThaiEnergyCostSensor(
             "import_sensor_id": self.coordinator.import_sensor_id,
             "export_sensor_id": self.coordinator.export_sensor_id,
             "solar_sensor_id": self.coordinator.solar_sensor_id,
+            "import_baseline_kwh": self.coordinator.import_baseline_kwh,
+            "solar_baseline_kwh": self.coordinator.solar_baseline_kwh,
+            "export_baseline_kwh": self.coordinator.export_baseline_kwh,
             "daily_import_kwh_history": self.coordinator.data.get("daily_import_kwh_history"),
             "daily_solar_kwh_history": self.coordinator.data.get("daily_solar_kwh_history"),
             "daily_export_kwh_history": self.coordinator.data.get("daily_export_kwh_history"),
         }
+
+    @property
+    def native_value(self) -> Any:
+        """Return the current state value calculated by the coordinator."""
+        if self.coordinator.data and self.key in self.coordinator.data:
+            return self.coordinator.data[self.key]
+        return self._restored_native_value

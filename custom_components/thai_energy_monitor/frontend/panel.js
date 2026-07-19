@@ -3,7 +3,7 @@
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
  * 30-day multi-trend SVG solar line chart, multi-pattern HA entity slug matching, and
- * direct Python coordinator baseline subtraction engine for accurate ~5,000 THB bill prediction.
+ * direct Python coordinator baseline subtraction diagnostic panel.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -137,6 +137,19 @@ class ThaiEnergyPanel extends HTMLElement {
     const ftPct = Math.min(100, Math.round(((parseFloat(ftCharge) || 0) / totalBillNum) * 100));
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
+    // Extract Baseline Variables for Debug Diagnostic Panel
+    const importSensorId = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_sensor_id') || 'sensor.grid_import_kwh';
+    const exportSensorId = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'export_sensor_id') || 'sensor.grid_export_kwh';
+    const solarSensorId = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_sensor_id') || 'sensor.solar_production_energy';
+
+    const importBaseline = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_baseline_kwh');
+    const solarBaseline = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_baseline_kwh');
+    const exportBaseline = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'export_baseline_kwh');
+
+    const importCurrentReading = getEntityState([importSensorId]);
+    const solarCurrentReading = getEntityState([solarSensorId]);
+    const exportCurrentReading = getEntityState([exportSensorId]);
+
     // Extract 30-Day Historical Arrays from Python Coordinator Attributes
     const pyImportHistory = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'daily_import_kwh_history') || [];
     const pySolarHistory = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'daily_solar_kwh_history') || [];
@@ -245,6 +258,19 @@ class ThaiEnergyPanel extends HTMLElement {
       solcastForecastToday: solcastForecastToday,
       solcastPowerNow: solcastPowerNow,
       solcastForecastRemaining: solcastForecastRemaining,
+
+      // Debug Diagnostic Properties
+      importSensorId: importSensorId,
+      exportSensorId: exportSensorId,
+      solarSensorId: solarSensorId,
+      importBaseline: importBaseline !== null ? parseFloat(importBaseline).toFixed(3) : 'Not Initialized',
+      solarBaseline: solarBaseline !== null ? parseFloat(solarBaseline).toFixed(3) : 'Not Initialized',
+      exportBaseline: exportBaseline !== null ? parseFloat(exportBaseline).toFixed(3) : 'Not Initialized',
+      importCurrentReading: importCurrentReading,
+      solarCurrentReading: solarCurrentReading,
+      exportCurrentReading: exportCurrentReading,
+      currentDayOfCycle: currentDay,
+      billingResetDay: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'billing_day') || '1',
     };
   }
 
@@ -620,6 +646,48 @@ class ThaiEnergyPanel extends HTMLElement {
           font-size: 12px;
           color: var(--secondary-text-color, #9e9e9e);
         }
+
+        .debug-panel {
+          margin-top: 24px;
+          background-color: rgba(244, 67, 54, 0.06);
+          border: 1px solid var(--error-color, #f44336);
+          border-radius: 12px;
+          padding: 18px;
+        }
+
+        .debug-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--error-color, #f44336);
+          margin-top: 0;
+          margin-bottom: 12px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .debug-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 16px;
+          font-size: 13px;
+        }
+
+        .debug-section {
+          background-color: rgba(0, 0, 0, 0.2);
+          padding: 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .debug-section h4 {
+          margin-top: 0;
+          margin-bottom: 8px;
+          color: var(--primary-color, #03a9f4);
+          font-size: 13px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          padding-bottom: 4px;
+        }
       </style>
 
       <div class="header">
@@ -758,6 +826,45 @@ class ThaiEnergyPanel extends HTMLElement {
 
             <div class="note-box">
               Accurate monthly billing cycle calculation using baseline meter subtraction (Current Reading &minus; Month Start Reading) to eliminate total lifetime hardware accumulator offsets.
+            </div>
+
+            <!-- Diagnostics & Troubleshooting Panel -->
+            <div class="debug-panel">
+              <div class="debug-title">
+                <strong>🛠️ Thailand Energy Monitor - Real-Time Calibration & Diagnostic Hub</strong>
+              </div>
+              <div class="debug-grid">
+                <div class="debug-section">
+                  <h4>Grid Energy Import</h4>
+                  <div class="row"><span class="label">Entity ID</span><span class="val">${d.importSensorId}</span></div>
+                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} kWh</span></div>
+                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.importBaseline} kWh</span></div>
+                  <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${d.importKwh} kWh</span></div>
+                </div>
+
+                <div class="debug-section">
+                  <h4>Solar Production</h4>
+                  <div class="row"><span class="label">Entity ID</span><span class="val">${d.solarSensorId}</span></div>
+                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} kWh</span></div>
+                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.solarBaseline} kWh</span></div>
+                  <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${d.solarKwh} kWh</span></div>
+                </div>
+
+                <div class="debug-section">
+                  <h4>Grid Energy Export</h4>
+                  <div class="row"><span class="label">Entity ID</span><span class="val">${d.exportSensorId}</span></div>
+                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} kWh</span></div>
+                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.exportBaseline} kWh</span></div>
+                  <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${d.exportKwh} kWh</span></div>
+                </div>
+
+                <div class="debug-section">
+                  <h4>Temporal Calibration</h4>
+                  <div class="row"><span class="label">Billing Reset Day</span><span class="val">Day ${d.billingResetDay} of Month</span></div>
+                  <div class="row"><span class="label">Current Day of Cycle</span><span class="val">Day ${d.currentDayOfCycle} / 30</span></div>
+                  <div class="row"><span class="label">Active Window</span><span class="val highlight">${d.touStatus}</span></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -979,7 +1086,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.1.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.1.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 
