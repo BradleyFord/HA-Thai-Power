@@ -3,7 +3,7 @@
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
  * 30-day multi-trend SVG solar line chart, multi-pattern HA entity slug matching, and
- * real HA recorder statistics API query for non-linear actual historical energy & solar data.
+ * robust HA recorder statistics parser (handling null change / sum / state deltas).
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -58,9 +58,10 @@ class ThaiEnergyPanel extends HTMLElement {
     let solarEntityId = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh', 'monthly_solar_production_energy'], 'solar_sensor_id');
     let exportEntityId = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh', 'monthly_grid_export_energy'], 'export_sensor_id');
 
+    // Robust fallback: Find any active grid import energy sensor in HA state machine
     if (!importEntityId) {
       for (const id in states) {
-        if (id.includes('monthly_grid_import_energy') || id.includes('monthly_import_kwh') || id.includes('grid_import_energy')) {
+        if (id.includes('import') && (id.includes('kwh') || id.includes('energy'))) {
           importEntityId = id;
           break;
         }
@@ -69,7 +70,7 @@ class ThaiEnergyPanel extends HTMLElement {
 
     if (!solarEntityId) {
       for (const id in states) {
-        if (id.includes('monthly_solar_production_energy') || id.includes('monthly_solar_kwh') || id.includes('solar_production_energy')) {
+        if ((id.includes('solar') || id.includes('pv')) && (id.includes('kwh') || id.includes('energy') || id.includes('production'))) {
           solarEntityId = id;
           break;
         }
@@ -78,7 +79,7 @@ class ThaiEnergyPanel extends HTMLElement {
 
     if (!exportEntityId) {
       for (const id in states) {
-        if (id.includes('monthly_grid_export_energy') || id.includes('monthly_export_kwh') || id.includes('grid_export_energy')) {
+        if (id.includes('export') && (id.includes('kwh') || id.includes('energy'))) {
           exportEntityId = id;
           break;
         }
@@ -101,31 +102,43 @@ class ThaiEnergyPanel extends HTMLElement {
       });
 
       if (stats) {
-        if (importEntityId && stats[importEntityId]) {
+        const parseStatsMap = (entityStats) => {
+          if (!entityStats) return {};
           const map = {};
-          stats[importEntityId].forEach((st) => {
+          let prevVal = null;
+          entityStats.forEach((st) => {
             const dayNum = new Date(st.start).getDate();
-            map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
+            let dailyVal = 0.0;
+
+            if (st.change !== null && st.change !== undefined && !isNaN(parseFloat(st.change))) {
+              dailyVal = parseFloat(st.change);
+            } else {
+              const currentVal = st.sum !== null && st.sum !== undefined ? parseFloat(st.sum) : (st.state !== null && st.state !== undefined ? parseFloat(st.state) : null);
+              if (currentVal !== null && !isNaN(currentVal)) {
+                if (prevVal !== null && currentVal >= prevVal) {
+                  dailyVal = currentVal - prevVal;
+                }
+                prevVal = currentVal;
+              }
+            }
+
+            if (dailyVal > 0) {
+              map[dayNum] = dailyVal;
+            }
           });
-          this._dailyStatsMap = map;
+          return map;
+        };
+
+        if (importEntityId && stats[importEntityId]) {
+          this._dailyStatsMap = parseStatsMap(stats[importEntityId]);
         }
 
         if (solarEntityId && stats[solarEntityId]) {
-          const map = {};
-          stats[solarEntityId].forEach((st) => {
-            const dayNum = new Date(st.start).getDate();
-            map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
-          });
-          this._dailySolarStatsMap = map;
+          this._dailySolarStatsMap = parseStatsMap(stats[solarEntityId]);
         }
 
         if (exportEntityId && stats[exportEntityId]) {
-          const map = {};
-          stats[exportEntityId].forEach((st) => {
-            const dayNum = new Date(st.start).getDate();
-            map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
-          });
-          this._dailyExportStatsMap = map;
+          this._dailyExportStatsMap = parseStatsMap(stats[exportEntityId]);
         }
 
         this._extractData();
@@ -1103,7 +1116,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.1.4 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.1.5 &bull; Home Assistant Custom Integration
       </div>
     `;
 
