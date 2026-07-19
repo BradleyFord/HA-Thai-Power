@@ -684,9 +684,9 @@ class ThaiEnergyPanel extends HTMLElement {
         }
 
         .legend-line-solcast { width: 16px; height: 3px; background-color: var(--warning-color, #ff9800); border-radius: 2px; border-style: dashed; }
-        .legend-line-prod { width: 16px; height: 3px; background-color: var(--success-color, #4caf50); border-radius: 2px; }
-        .legend-line-self { width: 16px; height: 3px; background-color: var(--primary-color, #03a9f4); border-radius: 2px; }
-        .legend-line-export { width: 16px; height: 3px; background-color: var(--accent-color, #e91e63); border-radius: 2px; }
+        .legend-line-prod { width: 16px; height: 3px; background-color: var(--success-color, #4caf50); border-radius: 4px; }
+        .legend-line-self { width: 16px; height: 3px; background-color: var(--primary-color, #03a9f4); border-radius: 4px; }
+        .legend-line-export { width: 16px; height: 3px; background-color: var(--accent-color, #e91e63); border-radius: 4px; }
 
         .stacked-chart-container {
           flex: 1;
@@ -1110,17 +1110,17 @@ class ThaiEnergyPanel extends HTMLElement {
                   <!-- Trend 1: Solcast PV Forecast (Theoretical Maximum - Dashed Line) -->
                   <polyline points="${pointsSolcast}" fill="none" stroke="var(--warning-color, #ff9800)" stroke-width="2.5" stroke-dasharray="6,4" />
 
-                  <!-- Trend 2: Actual Solar Production (Past - Solid Green, Future - Dashed/Faded Green) -->
-                  ${pointsProdPast ? `<polyline points="${pointsProdPast}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="2.5" />` : ''}
-                  ${pointsProdFuture ? `<polyline points="${pointsProdFuture}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.4" />` : ''}
+                  <!-- Trend 2: Actual Solar Production (Thick Solid Green, Dashed Future) -->
+                  ${pointsProdPast ? `<polyline points="${pointsProdPast}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="4.0" />` : ''}
+                  ${pointsProdFuture ? `<polyline points="${pointsProdFuture}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="3.5" stroke-dasharray="4,4" opacity="0.4" />` : ''}
 
-                  <!-- Trend 3: Internal Self-Consumption (Past - Solid Cyan, Future - Dashed/Faded Cyan) -->
-                  ${pointsSelfPast ? `<polyline points="${pointsSelfPast}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.5" />` : ''}
-                  ${pointsSelfFuture ? `<polyline points="${pointsSelfFuture}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.4" />` : ''}
+                  <!-- Trend 3: Internal Self-Consumption (Thin Solid Cyan, Dashed Future) - Overlaid on top of Production -->
+                  ${pointsSelfPast ? `<polyline points="${pointsSelfPast}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.0" />` : ''}
+                  ${pointsSelfFuture ? `<polyline points="${pointsSelfFuture}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.8" stroke-dasharray="4,4" opacity="0.4" />` : ''}
 
                   <!-- Trend 4: Grid Export (Past - Solid Pink, Future - Dashed/Faded Pink) -->
-                  ${pointsExportPast ? `<polyline points="${pointsExportPast}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.5" />` : ''}
-                  ${pointsExportFuture ? `<polyline points="${pointsExportFuture}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.4" />` : ''}
+                  ${pointsExportPast ? `<polyline points="${pointsExportPast}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.0" />` : ''}
+                  ${pointsExportFuture ? `<polyline points="${pointsExportFuture}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="1.8" stroke-dasharray="4,4" opacity="0.4" />` : ''}
                 </svg>
 
                 <!-- X-Axis Labels (Days 1 to 30) -->
@@ -1236,7 +1236,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.4 &bull; Home Assistant Custom Integration
       </div>
     `;
 
