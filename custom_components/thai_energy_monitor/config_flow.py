@@ -78,7 +78,7 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data=data,
             )
 
-        # Interactive schema using clean Home Assistant selectors
+        # Interactive schema forcing only kWh energy sensors
         data_schema = vol.Schema(
             {
                 vol.Required(
@@ -90,9 +90,15 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_BILLING_DAY, default=1
                 ): selector({"number": {"min": 1, "max": 31, "step": 1, "mode": "box"}}),
-                vol.Required(CONF_GRID_IMPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
-                vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
-                vol.Required(CONF_SOLAR_PROD_SENSOR): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(CONF_GRID_IMPORT_SENSOR): selector({
+                    "entity": {"domain": "sensor", "unit_of_measurement": "kWh"}
+                }),
+                vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({
+                    "entity": {"domain": "sensor", "unit_of_measurement": "kWh"}
+                }),
+                vol.Required(CONF_SOLAR_PROD_SENSOR): selector({
+                    "entity": {"domain": "sensor", "unit_of_measurement": "kWh"}
+                }),
             }
         )
 
@@ -112,11 +118,19 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Thailand Energy & Solar Monitor."""
 
+    @property
+    def config_entry(self) -> config_entries.ConfigEntry:
+        """Return current config entry across HA versions."""
+        if hasattr(self, "_config_entry") and self._config_entry is not None:
+            return self._config_entry
+        if hasattr(self, "config_entry") and self.config_entry is not None:
+            return self.config_entry
+        return super().config_entry
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage options step for modifying dynamic financial and entity variables."""
-        # Use native self.config_entry from OptionsFlow base class
         current_entry = self.config_entry
 
         if user_input is not None:
@@ -135,12 +149,18 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
 
         current_data = {**current_entry.data, **current_entry.options}
 
-        # Define schema using unified serializable selector helpers only
+        # Define schema forcing only kWh energy sensors
         options_schema = vol.Schema(
             {
-                vol.Required(CONF_GRID_IMPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
-                vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
-                vol.Required(CONF_SOLAR_PROD_SENSOR): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(CONF_GRID_IMPORT_SENSOR): selector({
+                    "entity": {"domain": "sensor", "unit_of_measurement": "kWh"}
+                }),
+                vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({
+                    "entity": {"domain": "sensor", "unit_of_measurement": "kWh"}
+                }),
+                vol.Required(CONF_SOLAR_PROD_SENSOR): selector({
+                    "entity": {"domain": "sensor", "unit_of_measurement": "kWh"}
+                }),
                 vol.Required(CONF_TARIFF_CATEGORY): selector({
                     "select": {
                         "options": TARIFF_CATEGORIES,
