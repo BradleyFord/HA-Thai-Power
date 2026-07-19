@@ -1,7 +1,7 @@
 /**
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
- * Uses official Home Assistant theme styling tokens, stable cards (no bouncing animations),
- * interactive tab navigation event listeners, and accurate TOU status resolution.
+ * Built with stable DOM data binding (zero flashing / zero click event destruction),
+ * rich detailed metrics across 4 tabs, and official Home Assistant theme styling tokens.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -11,14 +11,20 @@ class ThaiEnergyPanel extends HTMLElement {
     this._hass = null;
     this._activeTab = 'overview';
     this._data = {};
+    this._rendered = false;
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._updateData();
+    this._extractData();
+    if (!this._rendered) {
+      this._initialRender();
+    } else {
+      this._updateDOMValues();
+    }
   }
 
-  _updateData() {
+  _extractData() {
     if (!this._hass) return;
 
     const states = this._hass.states;
@@ -43,21 +49,44 @@ class ThaiEnergyPanel extends HTMLElement {
 
     const touStatus = getEntityState('tou_window_status') || getAttribute('monthly_estimated_bill', 'tou_status') || 'Off-Peak';
 
+    const totalBill = getEntityState('monthly_estimated_bill');
+    const baseCost = getEntityState('monthly_base_cost');
+    const ftCharge = getEntityState('monthly_ft_charge');
+    const serviceCharge = getEntityState('monthly_service_charge');
+    const vatAmount = getEntityState('monthly_vat_amount');
+    const importKwh = getEntityState('monthly_import_kwh');
+    const exportKwh = getEntityState('monthly_export_kwh');
+    const solarKwh = getEntityState('monthly_solar_kwh');
+
+    const solarKwhNum = parseFloat(solarKwh) || 0;
+    const exportKwhNum = parseFloat(exportKwh) || 0;
+    const selfConsumedKwh = Math.max(0, solarKwhNum - exportKwhNum);
+    const selfConsumptionRatio = solarKwhNum > 0 ? Math.min(100, Math.round((selfConsumedKwh / solarKwhNum) * 100)) : 0;
+
+    const totalBillNum = Math.max(1, parseFloat(totalBill) || 1);
+    const basePct = Math.min(100, Math.round(((parseFloat(baseCost) || 0) / totalBillNum) * 100));
+    const ftPct = Math.min(100, Math.round(((parseFloat(ftCharge) || 0) / totalBillNum) * 100));
+    const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
+
     this._data = {
       touStatus: touStatus,
       isOffpeak: touStatus.toLowerCase().includes('off'),
-      totalBill: getEntityState('monthly_estimated_bill'),
-      baseCost: getEntityState('monthly_base_cost'),
-      ftCharge: getEntityState('monthly_ft_charge'),
-      serviceCharge: getEntityState('monthly_service_charge'),
-      vatAmount: getEntityState('monthly_vat_amount'),
-      importKwh: getEntityState('monthly_import_kwh'),
-      exportKwh: getEntityState('monthly_export_kwh'),
-      solarKwh: getEntityState('monthly_solar_kwh'),
+      totalBill: totalBill,
+      baseCost: baseCost,
+      ftCharge: ftCharge,
+      serviceCharge: serviceCharge,
+      vatAmount: vatAmount,
+      importKwh: importKwh,
+      exportKwh: exportKwh,
+      solarKwh: solarKwh,
+      selfConsumedKwh: selfConsumedKwh.toFixed(2),
+      selfConsumptionRatio: selfConsumptionRatio,
       solarSavings: getEntityState('monthly_solar_savings'),
       solarRevenue: getEntityState('monthly_solar_revenue'),
       totalSolarBenefit: getEntityState('monthly_total_solar_benefit'),
       lifetimeBenefit: getEntityState('lifetime_total_solar_benefit'),
+      lifetimeImport: getEntityState('lifetime_import_kwh'),
+      lifetimeSolar: getEntityState('lifetime_solar_kwh'),
       marginalRate: getEntityState('active_marginal_retail_rate') || getEntityState('marginal_rate'),
       gridPrice: getEntityState('current_grid_energy_import_price') || getEntityState('current_grid_price'),
       ftRate: getEntityState('current_ft_adjustment_rate') || getEntityState('ft_rate'),
@@ -73,30 +102,53 @@ class ThaiEnergyPanel extends HTMLElement {
       provider: getAttribute('monthly_estimated_bill', 'utility_provider') || 'MEA',
       tariffCategory: getAttribute('monthly_estimated_bill', 'tariff_category') || '1.2',
       opposingTariffName: getAttribute('monthly_estimated_bill', 'opposing_tariff_name') || 'TOU 1.3.2',
+      basePct: basePct,
+      ftPct: ftPct,
+      vatPct: vatPct,
     };
-
-    this.render();
   }
 
   _switchTab(tabName) {
     this._activeTab = tabName;
-    this.render();
+    this._initialRender();
   }
 
-  _attachEvents() {
+  _attachTabEvents() {
     const shadow = this.shadowRoot;
     const tabBtns = shadow.querySelectorAll('.tab-btn');
     tabBtns.forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const tab = e.currentTarget.getAttribute('data-tab');
-        if (tab) {
+        if (tab && tab !== this._activeTab) {
           this._switchTab(tab);
         }
       });
     });
   }
 
-  render() {
+  _updateDOMValues() {
+    const shadow = this.shadowRoot;
+    const d = this._data;
+
+    const setText = (id, text) => {
+      const el = shadow.getElementById(id);
+      if (el && el.textContent !== text) {
+        el.textContent = text;
+      }
+    };
+
+    setText('val-tou-status', d.touStatus);
+    setText('val-total-bill', `฿${d.totalBill}`);
+    setText('val-base-cost', `฿${d.baseCost}`);
+    setText('val-ft-charge', `฿${d.ftCharge}`);
+    setText('val-vat-amount', `฿${d.vatAmount}`);
+    setText('val-import-kwh', d.importKwh);
+    setText('val-solar-benefit', `฿${d.totalSolarBenefit}`);
+    setText('val-solar-savings', `฿${d.solarSavings}`);
+    setText('val-solar-revenue', `฿${d.solarRevenue}`);
+  }
+
+  _initialRender() {
     const d = this._data;
     const isOffpeak = d.isOffpeak;
     const offpeakBadge = isOffpeak
@@ -106,14 +158,8 @@ class ThaiEnergyPanel extends HTMLElement {
     const diffVal = parseFloat(d.tariffDiff || '0');
     const diffClass = diffVal >= 0 ? 'saving' : 'warning';
     const diffText = diffVal >= 0
-      ? `฿${Math.abs(diffVal).toFixed(2)} Savings vs ${d.opposingTariffName}`
+      ? `฿${Math.abs(diffVal).toFixed(2)} Monthly Savings`
       : `฿${Math.abs(diffVal).toFixed(2)} Higher than ${d.opposingTariffName}`;
-
-    // Itemized percentages
-    const totalBillNum = Math.max(1, parseFloat(d.totalBill) || 1);
-    const basePct = Math.min(100, Math.round(((parseFloat(d.baseCost) || 0) / totalBillNum) * 100));
-    const ftPct = Math.min(100, Math.round(((parseFloat(d.ftCharge) || 0) / totalBillNum) * 100));
-    const vatPct = Math.min(100, Math.round(((parseFloat(d.vatAmount) || 0) / totalBillNum) * 100));
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -132,7 +178,7 @@ class ThaiEnergyPanel extends HTMLElement {
           justify-content: space-between;
           align-items: center;
           background-color: var(--card-background-color, var(--ha-card-background, #1c1c1e));
-          padding: 20px;
+          padding: 20px 24px;
           border-radius: 12px;
           margin-bottom: 20px;
           border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
@@ -172,21 +218,22 @@ class ThaiEnergyPanel extends HTMLElement {
         /* Navigation Tabs */
         .tabs {
           display: flex;
-          gap: 8px;
+          gap: 10px;
           margin-bottom: 20px;
           border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
-          padding-bottom: 10px;
+          padding-bottom: 12px;
         }
 
         .tab-btn {
           background-color: var(--card-background-color, var(--ha-card-background, #1c1c1e));
           border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
           color: var(--secondary-text-color, #9e9e9e);
-          padding: 10px 18px;
+          padding: 10px 20px;
           border-radius: 8px;
           cursor: pointer;
           font-weight: 500;
           font-size: 14px;
+          outline: none;
         }
 
         .tab-btn:hover {
@@ -204,16 +251,15 @@ class ThaiEnergyPanel extends HTMLElement {
         /* Grid Layout */
         .grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
           gap: 20px;
         }
 
         .card {
           background-color: var(--card-background-color, var(--ha-card-background, #1c1c1e));
           border-radius: 12px;
-          padding: 20px;
+          padding: 22px;
           border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
-          /* Stationary cards - no hover transform bouncing */
         }
 
         .card h2 {
@@ -229,7 +275,7 @@ class ThaiEnergyPanel extends HTMLElement {
         }
 
         .metric-main {
-          font-size: 34px;
+          font-size: 36px;
           font-weight: 700;
           color: var(--primary-color, #03a9f4);
           margin: 14px 0;
@@ -245,7 +291,7 @@ class ThaiEnergyPanel extends HTMLElement {
         .row {
           display: flex;
           justify-content: space-between;
-          padding: 4px 0;
+          padding: 5px 0;
           border-bottom: 1px dashed var(--divider-color, rgba(255, 255, 255, 0.08));
         }
 
@@ -264,7 +310,7 @@ class ThaiEnergyPanel extends HTMLElement {
         .accent { color: var(--accent-color, #e91e63) !important; }
 
         .progress-container {
-          margin-top: 14px;
+          margin-top: 16px;
         }
 
         .bar-label {
@@ -272,13 +318,13 @@ class ThaiEnergyPanel extends HTMLElement {
           justify-content: space-between;
           font-size: 12px;
           color: var(--secondary-text-color, #9e9e9e);
-          margin-bottom: 4px;
+          margin-bottom: 6px;
         }
 
         .bar-bg {
-          height: 8px;
+          height: 10px;
           background-color: var(--secondary-background-color, #2c2c2e);
-          border-radius: 4px;
+          border-radius: 6px;
           overflow: hidden;
           display: flex;
         }
@@ -291,8 +337,18 @@ class ThaiEnergyPanel extends HTMLElement {
         .seg-ft { background-color: var(--warning-color, #ff9800); }
         .seg-vat { background-color: var(--accent-color, #e91e63); }
 
+        .note-box {
+          margin-top: 14px;
+          padding: 12px;
+          border-radius: 8px;
+          background-color: var(--secondary-background-color, rgba(255,255,255,0.04));
+          font-size: 13px;
+          color: var(--secondary-text-color, #9e9e9e);
+          line-height: 1.4;
+        }
+
         .footer-note {
-          margin-top: 30px;
+          margin-top: 32px;
           text-align: center;
           font-size: 12px;
           color: var(--secondary-text-color, #9e9e9e);
@@ -302,7 +358,7 @@ class ThaiEnergyPanel extends HTMLElement {
       <div class="header">
         <div>
           <h1>Thailand Energy & Solar Monitor</h1>
-          <div class="subtitle">Provider: <strong>${d.provider}</strong> | Registered Category: <strong>Tariff ${d.tariffCategory}</strong></div>
+          <div class="subtitle">Provider: <strong>${d.provider}</strong> | Active Category: <strong>Tariff ${d.tariffCategory}</strong></div>
         </div>
         <div>
           ${offpeakBadge}
@@ -325,20 +381,20 @@ class ThaiEnergyPanel extends HTMLElement {
         </button>
       </div>
 
-      <!-- Tab 1: Billing Overview -->
+      <!-- Tab 1: Detailed Billing Overview -->
       ${this._activeTab === 'overview' ? `
         <div class="grid">
           <div class="card">
-            <h2>Monthly Estimated Bill <span>(THB)</span></h2>
-            <div class="metric-main">฿${d.totalBill}</div>
+            <h2>Current Monthly Estimated Bill <span>(THB)</span></h2>
+            <div class="metric-main" id="val-total-bill">฿${d.totalBill}</div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Base Energy Charge</span>
-                <span class="val">฿${d.baseCost}</span>
+                <span class="val" id="val-base-cost">฿${d.baseCost}</span>
               </div>
               <div class="row">
                 <span class="label">Ft Charge (${d.ftRate} ฿/kWh)</span>
-                <span class="val">฿${d.ftCharge}</span>
+                <span class="val" id="val-ft-charge">฿${d.ftCharge}</span>
               </div>
               <div class="row">
                 <span class="label">Fixed Service Charge</span>
@@ -346,28 +402,32 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Statutory VAT (7%)</span>
-                <span class="val">฿${d.vatAmount}</span>
+                <span class="val" id="val-vat-amount">฿${d.vatAmount}</span>
               </div>
             </div>
 
             <div class="progress-container">
               <div class="bar-label">
-                <span>Base (${basePct}%)</span>
-                <span>Ft (${ftPct}%)</span>
-                <span>VAT (${vatPct}%)</span>
+                <span>Base (${d.basePct}%)</span>
+                <span>Ft (${d.ftPct}%)</span>
+                <span>VAT (${d.vatPct}%)</span>
               </div>
               <div class="bar-bg">
-                <div class="bar-segment seg-base" style="width: ${basePct}%"></div>
-                <div class="bar-segment seg-ft" style="width: ${ftPct}%"></div>
-                <div class="bar-segment seg-vat" style="width: ${vatPct}%"></div>
+                <div class="bar-segment seg-base" style="width: ${d.basePct}%"></div>
+                <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
+                <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>Monthly Consumption Profile</h2>
-            <div class="metric-main" style="color: var(--primary-color, #03a9f4);">${d.importKwh} <span style="font-size: 18px;">kWh</span></div>
+            <h2>Detailed Consumption & Rates</h2>
+            <div class="metric-main" style="color: var(--primary-color, #03a9f4);"><span id="val-import-kwh">${d.importKwh}</span> <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
+              <div class="row">
+                <span class="label">TOU Window Status</span>
+                <span class="val" id="val-tou-status">${d.touStatus}</span>
+              </div>
               <div class="row">
                 <span class="label">Active Marginal Retail Rate</span>
                 <span class="val">฿${d.marginalRate} / kWh</span>
@@ -377,36 +437,48 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val">฿${d.gridPrice} / kWh</span>
               </div>
               <div class="row">
-                <span class="label">Last Month Final Total Bill</span>
+                <span class="label">Last Month Total Bill</span>
                 <span class="val">฿${d.lastMonthBill} (${d.lastMonthImport} kWh)</span>
+              </div>
+              <div class="row">
+                <span class="label">Lifetime Grid Import Volume</span>
+                <span class="val">${d.lifetimeImport} kWh</span>
               </div>
             </div>
           </div>
         </div>
       ` : ''}
 
-      <!-- Tab 2: Solar ROI & BESS -->
+      <!-- Tab 2: Detailed Solar ROI & BESS -->
       ${this._activeTab === 'solar' ? `
         <div class="grid">
           <div class="card">
-            <h2>Monthly Solar Net Benefit</h2>
-            <div class="metric-main saving">฿${d.totalSolarBenefit}</div>
+            <h2>Solar Net Billing ROI Breakdown</h2>
+            <div class="metric-main saving" id="val-solar-benefit">฿${d.totalSolarBenefit}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Self-Consumption Savings</span>
-                <span class="val saving">฿${d.solarSavings}</span>
+                <span class="label">Self-Consumption Savings (Riemann Integration)</span>
+                <span class="val saving" id="val-solar-savings">฿${d.solarSavings}</span>
               </div>
               <div class="row">
                 <span class="label">Export Buy-Back Revenue (${d.sellbackRate} ฿/kWh)</span>
-                <span class="val saving">฿${d.solarRevenue}</span>
+                <span class="val saving" id="val-solar-revenue">฿${d.solarRevenue}</span>
               </div>
               <div class="row">
-                <span class="label">Solar Generation Volume</span>
+                <span class="label">Total Solar Production Volume</span>
                 <span class="val">${d.solarKwh} kWh</span>
+              </div>
+              <div class="row">
+                <span class="label">Self-Consumed Volume</span>
+                <span class="val">${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)</span>
               </div>
               <div class="row">
                 <span class="label">Grid Export Volume</span>
                 <span class="val">${d.exportKwh} kWh</span>
+              </div>
+              <div class="row">
+                <span class="label">Lifetime Solar Net Benefit</span>
+                <span class="val saving">฿${d.lifetimeBenefit}</span>
               </div>
             </div>
           </div>
@@ -421,22 +493,25 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Simulation Strategy</span>
-                <span class="val">Solar Storage &rarr; Peak Discharge</span>
+                <span class="val">Day Solar Storage &rarr; Evening Peak Discharge</span>
               </div>
               <div class="row">
-                <span class="label">Lifetime Solar Benefit</span>
-                <span class="val saving">฿${d.lifetimeBenefit}</span>
+                <span class="label">Lifetime Solar Generation</span>
+                <span class="val">${d.lifetimeSolar} kWh</span>
               </div>
+            </div>
+            <div class="note-box">
+              Models financial recovery by storing excess solar exported during daytime (otherwise sold at 2.20 THB/kWh) and discharging during peak evening hours.
             </div>
           </div>
         </div>
       ` : ''}
 
-      <!-- Tab 3: Predictive Tariff Optimizer -->
+      <!-- Tab 3: Detailed Tariff Optimizer -->
       ${this._activeTab === 'predictive' ? `
         <div class="grid">
           <div class="card">
-            <h2>Phantom Tariff Comparison Engine</h2>
+            <h2>Phantom Tariff Optimizer</h2>
             <div class="metric-main ${diffClass}">${diffText}</div>
             <div class="table-rows">
               <div class="row">
@@ -452,11 +527,32 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val ${diffClass}">${diffVal >= 0 ? 'Stay on Tariff ' + d.tariffCategory : 'Switch to ' + d.opposingTariffName}</span>
               </div>
             </div>
+            <div class="note-box">
+              Runs a background phantom calculation engine processing your exact consumption through opposing tariff structures to highlight potential monthly savings.
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Tariff Transition Regulations</h2>
+            <div class="table-rows">
+              <div class="row">
+                <span class="label">Tariff 1.1 Free PSO Subsidy</span>
+                <span class="val">Free base charge if &le; 50 kWh/month</span>
+              </div>
+              <div class="row">
+                <span class="label">Tariff 1.1 Exceed Threshold</span>
+                <span class="val">&gt; 150 kWh/month for 3 consecutive months</span>
+              </div>
+              <div class="row">
+                <span class="label">Auto-Reclassification Engine</span>
+                <span class="val">Auto-switches calculation to Tariff 1.2</span>
+              </div>
+            </div>
           </div>
         </div>
       ` : ''}
 
-      <!-- Tab 4: Rewards & Outages -->
+      <!-- Tab 4: Detailed Rewards & Outages -->
       ${this._activeTab === 'reliability' ? `
         <div class="grid">
           <div class="card">
@@ -471,6 +567,13 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="label">Conversion Benchmark</span>
                 <span class="val">1 Point = 0.10 THB</span>
               </div>
+              <div class="row">
+                <span class="label">Monthly Auto-Accrual</span>
+                <span class="val">+30 Pts (e-Bill) / +80 Pts (e-Payment)</span>
+              </div>
+            </div>
+            <div class="note-box">
+              Call Home Assistant service <code>thai_energy_monitor.adjust_mea_points</code> to redeem or adjust points when used.
             </div>
           </div>
 
@@ -479,11 +582,11 @@ class ThaiEnergyPanel extends HTMLElement {
             <div class="metric-main warning">฿${d.outageCost}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Outage Incidents</span>
+                <span class="label">Outage Incidents Recorded</span>
                 <span class="val warning">${d.outageCount} events</span>
               </div>
               <div class="row">
-                <span class="label">Macro Economic Loss Impact Metric</span>
+                <span class="label">Macro Economic Loss Impact</span>
                 <span class="val">308.41 ฿ / kWh</span>
               </div>
             </div>
@@ -492,11 +595,12 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.0.4 &bull; Home Assistant Integration
+        Thailand Energy & Solar Monitor v1.0.5 &bull; Home Assistant Custom Integration
       </div>
     `;
 
-    this._attachEvents();
+    this._attachTabEvents();
+    this._rendered = true;
   }
 }
 
