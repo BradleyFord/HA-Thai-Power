@@ -200,8 +200,10 @@ class ThaiEnergyPanel extends HTMLElement {
     const totalFtNum = parseFloat(ftCharge) || 0;
     const totalServiceNum = parseFloat(serviceCharge) || 38.22;
     const totalVatNum = parseFloat(vatAmount) || 0;
+    const ftRate = getAttribute(['monthly_estimated_bill'], 'ft_rate') || 0.395;
+    const VAT_RATE = 0.07;
 
-    // Generate non-linear cumulative monthly bill progression
+    // Generate non-linear cumulative monthly bill progression with 3 Base tiers
     let runningKwh = 0.0;
     const dailyKwhList = [];
     for (let day = 1; day <= 30; day++) {
@@ -214,21 +216,33 @@ class ThaiEnergyPanel extends HTMLElement {
     const maxAccruedKwh = Math.max(0.1, runningKwh);
 
     const monthlyDailyBars = dailyKwhList.map((item) => {
-      const ratio = Math.min(1.0, item.runningKwh / maxAccruedKwh);
+      const isPastOrToday = item.isPastOrToday;
+      
+      // Calculate progressive tiers for this day's cumulative runningKwh
+      const t1Kwh = Math.min(item.runningKwh, 150);
+      const t2Kwh = Math.max(0, Math.min(item.runningKwh - 150, 250));
+      const t3Kwh = Math.max(0, item.runningKwh - 400);
+
+      const t1Val = t1Kwh * 3.2482;
+      const t2Val = t2Kwh * 4.2218;
+      const t3Val = t3Kwh * 4.4217;
+      const bVal = t1Val + t2Val + t3Val;
+
       const sVal = totalServiceNum * (item.day / 30.0);
-      const bVal = totalBaseNum * ratio;
-      const fVal = totalFtNum * ratio;
-      const vVal = totalVatNum * ratio;
+      const fVal = item.runningKwh * ftRate;
+      const vVal = (sVal + bVal + fVal) * VAT_RATE;
       const dayCumulativeTotal = sVal + bVal + fVal + vVal;
 
       return {
         day: item.day,
         service: sVal,
-        base: bVal,
+        tier1: t1Val,
+        tier2: t2Val,
+        tier3: t3Val,
         ft: fVal,
         vat: vVal,
         total: dayCumulativeTotal,
-        isPastOrToday: item.isPastOrToday,
+        isPastOrToday: isPastOrToday,
       };
     });
 
@@ -253,6 +267,20 @@ class ThaiEnergyPanel extends HTMLElement {
         isPastOrToday: isPastOrToday,
       });
     }
+
+    // Break down current configuration base cost into dynamic tiers for progress horizontal bar
+    const importKwhVal = parseFloat(importKwh) || 0;
+    const currentT1Kwh = Math.min(importKwhVal, 150);
+    const currentT2Kwh = Math.max(0, Math.min(importKwhVal - 150, 250));
+    const currentT3Kwh = Math.max(0, importKwhVal - 400);
+
+    const currentT1Val = currentT1Kwh * 3.2482;
+    const currentT2Val = currentT2Kwh * 4.2218;
+    const currentT3Val = currentT3Kwh * 4.4217;
+
+    const t1Pct = totalBillNum > 0 ? ((currentT1Val / totalBillNum) * 100).toFixed(1) : 0;
+    const t2Pct = totalBillNum > 0 ? ((currentT2Val / totalBillNum) * 100).toFixed(1) : 0;
+    const t3Pct = totalBillNum > 0 ? ((currentT3Val / totalBillNum) * 100).toFixed(1) : 0;
 
     this._data = {
       touStatus: touStatus,
@@ -291,6 +319,9 @@ class ThaiEnergyPanel extends HTMLElement {
       basePct: basePct,
       ftPct: ftPct,
       vatPct: vatPct,
+      t1Pct: t1Pct,
+      t2Pct: t2Pct,
+      t3Pct: t3Pct,
       monthlyDailyBars: monthlyDailyBars,
       solarMonthlyTrends: solarMonthlyTrends,
       solcastEntityFound: solcastEntityFound,
@@ -581,9 +612,10 @@ class ThaiEnergyPanel extends HTMLElement {
         .bar-label {
           display: flex;
           justify-content: space-between;
-          font-size: 12px;
+          font-size: 11px;
           color: var(--secondary-text-color, #9e9e9e);
           margin-bottom: 6px;
+          flex-wrap: wrap;
         }
 
         .bar-bg {
@@ -599,7 +631,9 @@ class ThaiEnergyPanel extends HTMLElement {
         }
 
         .seg-service { background-color: var(--secondary-text-color, #9e9e9e); }
-        .seg-base { background-color: var(--primary-color, #03a9f4); }
+        .seg-tier1 { background-color: #1976d2; }
+        .seg-tier2 { background-color: #2196f3; }
+        .seg-tier3 { background-color: #64b5f6; }
         .seg-ft { background-color: var(--warning-color, #ff9800); }
         .seg-vat { background-color: var(--accent-color, #e91e63); }
 
@@ -815,12 +849,16 @@ class ThaiEnergyPanel extends HTMLElement {
 
             <div class="progress-container">
               <div class="bar-label">
-                <span>Base (${d.basePct}%)</span>
+                <span>Tier 1 (${d.t1Pct}%)</span>
+                <span>Tier 2 (${d.t2Pct}%)</span>
+                <span>Tier 3 (${d.t3Pct}%)</span>
                 <span>Ft (${d.ftPct}%)</span>
                 <span>VAT (${d.vatPct}%)</span>
               </div>
               <div class="bar-bg">
-                <div class="bar-segment seg-base" style="width: ${d.basePct}%"></div>
+                <div class="bar-segment seg-tier1" style="width: ${d.t1Pct}%"></div>
+                <div class="bar-segment seg-tier2" style="width: ${d.t2Pct}%"></div>
+                <div class="bar-segment seg-tier3" style="width: ${d.t3Pct}%"></div>
                 <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
                 <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
               </div>
@@ -856,12 +894,14 @@ class ThaiEnergyPanel extends HTMLElement {
 
           <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis & Baseline Subtraction Engine -->
           <div class="card full-width">
-            <h2>Cumulative Monthly Running Bill Progression (Baseline Subtraction Engine)</h2>
+            <h2>Cumulative Monthly Running Bill Progression (Tiered Base Charge)</h2>
             <div class="chart-legend">
-              <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service Charge</div>
-              <div class="legend-item"><div class="legend-dot seg-base"></div> 2. Base Energy Charge</div>
-              <div class="legend-item"><div class="legend-dot seg-ft"></div> 3. Ft Charge</div>
-              <div class="legend-item"><div class="legend-dot seg-vat"></div> 4. VAT (7%)</div>
+              <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service</div>
+              <div class="legend-item"><div class="legend-dot seg-tier1"></div> 2. Base Tier 1 (0-150)</div>
+              <div class="legend-item"><div class="legend-dot seg-tier2"></div> 3. Base Tier 2 (151-400)</div>
+              <div class="legend-item"><div class="legend-dot seg-tier3"></div> 4. Base Tier 3 (&gt;400)</div>
+              <div class="legend-item"><div class="legend-dot seg-ft"></div> 5. Ft Charge</div>
+              <div class="legend-item"><div class="legend-dot seg-vat"></div> 6. VAT (7%)</div>
             </div>
 
             <div class="chart-wrapper">
@@ -878,15 +918,19 @@ class ThaiEnergyPanel extends HTMLElement {
               <div class="stacked-chart-container">
                 ${d.monthlyDailyBars.map(bar => {
                   const sPct = ((bar.service / maxDayTotal) * 100).toFixed(1);
-                  const bPct = ((bar.base / maxDayTotal) * 100).toFixed(1);
+                  const t1Pct = ((bar.tier1 / maxDayTotal) * 100).toFixed(1);
+                  const t2Pct = ((bar.tier2 / maxDayTotal) * 100).toFixed(1);
+                  const t3Pct = ((bar.tier3 / maxDayTotal) * 100).toFixed(1);
                   const fPct = ((bar.ft / maxDayTotal) * 100).toFixed(1);
                   const vPct = ((bar.vat / maxDayTotal) * 100).toFixed(1);
                   const opacity = bar.isPastOrToday ? '1.0' : '0.4';
 
                   return `
-                    <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Base: ฿${bar.base.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                    <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Tier 1: ฿${bar.tier1.toFixed(2)}, Tier 2: ฿${bar.tier2.toFixed(2)}, Tier 3: ฿${bar.tier3.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
                       <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
-                      <div class="bar-piece seg-base" style="height: ${bPct}%;"></div>
+                      <div class="bar-piece seg-tier1" style="height: ${t1Pct}%;"></div>
+                      <div class="bar-piece seg-tier2" style="height: ${t2Pct}%;"></div>
+                      <div class="bar-piece seg-tier3" style="height: ${t3Pct}%;"></div>
                       <div class="bar-piece seg-ft" style="height: ${fPct}%;"></div>
                       <div class="bar-piece seg-vat" style="height: ${vPct}%;"></div>
                       <div class="col-day-label">${bar.day}</div>
@@ -897,7 +941,10 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
 
             <div class="note-box">
-              Accurate monthly billing cycle calculation using baseline meter subtraction (Current Reading &minus; Month Start Reading) to eliminate total lifetime hardware accumulator offsets.
+              Accurate progressive tiered billing cycle progression. Base Charge is split daily:
+              <strong style="color: #1976d2;">Tier 1</strong> (first 150 kWh) &bull;
+              <strong style="color: #2196f3;">Tier 2</strong> (next 250 kWh) &bull;
+              <strong style="color: #64b5f6;">Tier 3</strong> (excess over 400 kWh).
             </div>
 
             <!-- Diagnostics & Troubleshooting Panel -->
@@ -1189,7 +1236,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 
