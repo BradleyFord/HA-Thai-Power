@@ -4,8 +4,9 @@ Performs asynchronous numerical integration (Riemann sums), tariff calculation,
 phantom predictive tariff comparison, BESS simulation, MEA gamification points,
 monthly billing cycle auto-resets, HA Energy Dashboard compatibility, single
 bidirectional net grid sensor support, Python recorder database LTS statistics querying,
-billing cycle baseline subtraction for total increasing hardware meters, and strict
-Thailand Standard Time (Asia/Bangkok) timezone TOU peak/off-peak resolution.
+billing cycle baseline subtraction for total increasing hardware meters, automatic Riemann
+integration for power (W/kW) source sensors, and strict Thailand Standard Time (Asia/Bangkok)
+timezone TOU peak/off-peak resolution.
 """
 
 from __future__ import annotations
@@ -103,6 +104,15 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.solar_baseline_kwh: float | None = None
         self.export_baseline_kwh: float | None = None
 
+        # Riemann Integration tracking variables
+        self._last_import_time: datetime | None = None
+        self._last_solar_time: datetime | None = None
+        self._last_export_time: datetime | None = None
+
+        self._last_import_power_val: float | None = None
+        self._last_solar_power_val: float | None = None
+        self._last_export_power_val: float | None = None
+
         # Last raw sensor readings
         self._last_raw_grid_val: float | None = None
         self._last_import_val: float | None = None
@@ -149,6 +159,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Tariff 1.1 >150 kWh consecutive high months tracking
         self.consecutive_high_months: int = 0
+
+        self._restored = False
 
     async def async_setup_listeners(self) -> None:
         """Subscribe to source sensor state change events asynchronously."""
@@ -355,12 +367,53 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "daily_export_kwh_history": daily_export,
         }
 
+    def _is_power_sensor(self, entity_id: str, state_obj: Any) -> bool:
+        """Check if a sensor represents instantaneous power (W/kW) rather than energy (kWh)."""
+        if not state_obj:
+            return False
+        unit = state_obj.attributes.get("unit_of_measurement")
+        if unit in ("W", "kW"):
+            return True
+        if "power" in entity_id.lower() or "active_power" in entity_id.lower():
+            return True
+        return False
+
+    def _restore_accumulators(self) -> None:
+        """Helper to restore coordinator accumulators from entity states on reboot."""
+        if self._restored:
+            return
+
+        def _restore_key(key_str):
+            for entity_id in self.hass.states.async_entity_ids("sensor"):
+                if key_str in entity_id and "thailand_energy" in entity_id:
+                    st = self.hass.states.get(entity_id)
+                    if st and st.state not in ("unavailable", "unknown"):
+                        try:
+                            return float(st.state)
+                        except ValueError:
+                            pass
+            return 0.0
+
+        restored_import = _restore_key("monthly_import_kwh") or _restore_key("monthly_grid_import_energy")
+        restored_solar = _restore_key("monthly_solar_kwh") or _restore_key("monthly_solar_production_energy")
+        restored_export = _restore_key("monthly_export_kwh") or _restore_key("monthly_grid_export_energy")
+
+        if restored_import > 0:
+            self.monthly_import_kwh = restored_import
+        if restored_solar > 0:
+            self.monthly_solar_kwh = restored_solar
+        if restored_export > 0:
+            self.monthly_export_kwh = restored_export
+
+        self._restored = True
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Process incoming sensor states, baseline subtraction, and tariff engine."""
         now = dt_util.now()
         is_offpeak = self.is_tou_offpeak(now)
 
         self._check_monthly_reset(now)
+        self._restore_accumulators()
 
         import_state = self.hass.states.get(self.import_sensor_id)
         export_state = self.hass.states.get(self.export_sensor_id) if not self.is_single_bidirectional_sensor else import_state
@@ -394,9 +447,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (ValueError, TypeError):
             curr_solar = 0.0
 
-        # Billing Cycle Baselines
-        billing_start_dt = self._get_billing_start_datetime(now)
-
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
             bkk_now = now.astimezone(bkk_tz)
@@ -405,48 +455,96 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         current_day = min(30, max(1, bkk_now.day))
 
-        # Safe Baseline Estimation to avoid locking at 0.0 during initialization
-        if self.import_baseline_kwh is None and curr_import > 0.0:
-            fetched_base = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
-            if fetched_base is not None and fetched_base > 0.0:
-                self.import_baseline_kwh = fetched_base
-            else:
-                self.import_baseline_kwh = max(0.0, curr_import - (current_day * 33.33))
+        # --- RIEMANN INTEGRATION ENGINE FOR POWER SENSORS (kW/W) ---
+        is_import_power = self._is_power_sensor(self.import_sensor_id, import_state)
+        is_solar_power = self._is_power_sensor(self.solar_sensor_id, solar_state)
+        is_export_power = self._is_power_sensor(self.export_sensor_id, export_state)
 
-        if self.solar_baseline_kwh is None and curr_solar > 0.0:
-            fetched_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, billing_start_dt)
-            if fetched_solar is not None and fetched_solar > 0.0:
-                self.solar_baseline_kwh = fetched_solar
-            else:
-                self.solar_baseline_kwh = max(0.0, curr_solar - (current_day * 15.0))
-
-        if self.export_baseline_kwh is None and curr_export > 0.0:
-            fetched_export = await self._async_get_sensor_baseline(self.export_sensor_id, billing_start_dt)
-            if fetched_export is not None and fetched_export > 0.0:
-                self.export_baseline_kwh = fetched_export
-            else:
-                self.export_baseline_kwh = max(0.0, curr_export - (current_day * 5.0))
-
-        # Calculate active monthly usage by subtracting baselines
-        if curr_import >= (self.import_baseline_kwh or 0.0) and (self.import_baseline_kwh or 0.0) > 0.0:
-            self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
+        # Import Riemann Sum Integration
+        if is_import_power:
+            if self._last_import_time is not None:
+                elapsed = (now - self._last_import_time).total_seconds()
+                if elapsed > 0:
+                    power_w = self._last_import_power_val if self._last_import_power_val is not None else curr_import
+                    # Check unit: if it's W, convert to kW by dividing by 1000
+                    unit = import_state.attributes.get("unit_of_measurement") if import_state else "W"
+                    power_kw = (power_w / 1000.0) if unit == "W" else power_w
+                    delta_kwh = (power_kw * elapsed) / 3600.0
+                    self.monthly_import_kwh += delta_kwh
+            self._last_import_time = now
+            self._last_import_power_val = curr_import
         else:
-            # Fallback estimation if baseline subtraction isn't populated yet
-            self.monthly_import_kwh = min(curr_import, current_day * 33.33)
+            # Baseline Subtraction for Energy Sensors
+            billing_start_dt = self._get_billing_start_datetime(now)
+            if self.import_baseline_kwh is None and curr_import > 0.0:
+                fetched_base = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
+                if fetched_base is not None and fetched_base > 0.0:
+                    self.import_baseline_kwh = fetched_base
+                else:
+                    self.import_baseline_kwh = max(0.0, curr_import - (current_day * 33.33))
+            
+            if curr_import >= (self.import_baseline_kwh or 0.0) and (self.import_baseline_kwh or 0.0) > 0.0:
+                self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
+            else:
+                self.monthly_import_kwh = min(curr_import, current_day * 33.33)
 
-        if curr_solar >= (self.solar_baseline_kwh or 0.0) and (self.solar_baseline_kwh or 0.0) > 0.0:
-            self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
+        # Solar Riemann Sum Integration
+        if is_solar_power:
+            if self._last_solar_time is not None:
+                elapsed = (now - self._last_solar_time).total_seconds()
+                if elapsed > 0:
+                    power_w = self._last_solar_power_val if self._last_solar_power_val is not None else curr_solar
+                    unit = solar_state.attributes.get("unit_of_measurement") if solar_state else "W"
+                    power_kw = (power_w / 1000.0) if unit == "W" else power_w
+                    delta_kwh = (power_kw * elapsed) / 3600.0
+                    self.monthly_solar_kwh += delta_kwh
+            self._last_solar_time = now
+            self._last_solar_power_val = curr_solar
         else:
-            self.monthly_solar_kwh = min(curr_solar, current_day * 15.0)
+            # Baseline Subtraction for Energy Sensors
+            billing_start_dt = self._get_billing_start_datetime(now)
+            if self.solar_baseline_kwh is None and curr_solar > 0.0:
+                fetched_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, billing_start_dt)
+                if fetched_solar is not None and fetched_solar > 0.0:
+                    self.solar_baseline_kwh = fetched_solar
+                else:
+                    self.solar_baseline_kwh = max(0.0, curr_solar - (current_day * 15.0))
+            
+            if curr_solar >= (self.solar_baseline_kwh or 0.0) and (self.solar_baseline_kwh or 0.0) > 0.0:
+                self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
+            else:
+                self.monthly_solar_kwh = min(curr_solar, current_day * 15.0)
 
-        if curr_export >= (self.export_baseline_kwh or 0.0) and (self.export_baseline_kwh or 0.0) > 0.0:
-            self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
+        # Export Riemann Sum Integration
+        if is_export_power:
+            if self._last_export_time is not None:
+                elapsed = (now - self._last_export_time).total_seconds()
+                if elapsed > 0:
+                    power_w = self._last_export_power_val if self._last_export_power_val is not None else curr_export
+                    unit = export_state.attributes.get("unit_of_measurement") if export_state else "W"
+                    power_kw = (power_w / 1000.0) if unit == "W" else power_w
+                    delta_kwh = (power_kw * elapsed) / 3600.0
+                    self.monthly_export_kwh += delta_kwh
+            self._last_export_time = now
+            self._last_export_power_val = curr_export
         else:
-            self.monthly_export_kwh = min(curr_export, current_day * 5.0)
+            # Baseline Subtraction for Energy Sensors
+            billing_start_dt = self._get_billing_start_datetime(now)
+            if self.export_baseline_kwh is None and curr_export > 0.0:
+                fetched_export = await self._async_get_sensor_baseline(self.export_sensor_id, billing_start_dt)
+                if fetched_export is not None and fetched_export > 0.0:
+                    self.export_baseline_kwh = fetched_export
+                else:
+                    self.export_baseline_kwh = max(0.0, curr_export - (current_day * 5.0))
+            
+            if curr_export >= (self.export_baseline_kwh or 0.0) and (self.export_baseline_kwh or 0.0) > 0.0:
+                self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
+            else:
+                self.monthly_export_kwh = min(curr_export, current_day * 5.0)
 
-        self.lifetime_import_kwh = curr_import
-        self.lifetime_export_kwh = curr_export
-        self.lifetime_solar_kwh = curr_solar
+        self.lifetime_import_kwh = curr_import if not is_import_power else self.monthly_import_kwh
+        self.lifetime_export_kwh = curr_export if not is_export_power else self.monthly_export_kwh
+        self.lifetime_solar_kwh = curr_solar if not is_solar_power else self.monthly_solar_kwh
 
         # Split peak/off-peak consumption
         self.monthly_tou_offpeak_import_kwh = self.monthly_import_kwh * 0.60
