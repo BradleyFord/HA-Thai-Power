@@ -13,6 +13,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     EntitySelector,
     EntitySelectorConfig,
@@ -49,18 +50,19 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a initial config flow for Thailand Energy & Solar Monitor."""
+    """Handle initial config flow for Thailand Energy & Solar Monitor."""
 
     VERSION = 1
+    DOMAIN = DOMAIN
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
+    ) -> FlowResult:
         """Handle the initial setup step triggered by the user."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Validate unique entry per domain setup
+            # Set unique ID based on provider and tariff
             await self.async_set_unique_id(
                 f"{user_input[CONF_UTILITY_PROVIDER]}_{user_input[CONF_TARIFF_CATEGORY]}"
             )
@@ -81,7 +83,7 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data=data,
             )
 
-        # Build interactive schema using Home Assistant selectors
+        # Interactive schema using clean Home Assistant selectors
         data_schema = vol.Schema(
             {
                 vol.Required(
@@ -90,7 +92,6 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     SelectSelectorConfig(
                         options=UTILITY_PROVIDERS,
                         mode=SelectSelectorMode.DROPDOWN,
-                        translation_key="utility_provider",
                     )
                 ),
                 vol.Required(
@@ -99,7 +100,6 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     SelectSelectorConfig(
                         options=TARIFF_CATEGORIES,
                         mode=SelectSelectorMode.DROPDOWN,
-                        translation_key="tariff_category",
                     )
                 ),
                 vol.Required(
@@ -138,34 +138,39 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for Thailand Energy & Solar Monitor.
+    """Handle options flow for Thailand Energy & Solar Monitor."""
 
-    Directive Adherence: To prevent configuration key duplication, options flow
-    reads defaults from self.config_entry.data and writes updates directly back into
-    self.config_entry.data via async_update_entry, leaving options dictionary empty.
-    """
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
         """Initialize options flow handler."""
-        self.config_entry = config_entry
+        if config_entry is not None:
+            self._config_entry = config_entry
+
+    @property
+    def config_entry(self) -> config_entries.ConfigEntry:
+        """Return current config entry across HA versions."""
+        if hasattr(self, "_config_entry") and self._config_entry is not None:
+            return self._config_entry
+        return super().config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
+    ) -> FlowResult:
         """Manage options step for modifying dynamic financial variables."""
+        current_entry = self.config_entry
+
         if user_input is not None:
             # Update base entry data dictionary directly
-            new_data = {**self.config_entry.data, **user_input}
+            new_data = {**current_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
+                current_entry, data=new_data
             )
-            # Reload entry to apply updated settings to coordinator & sensors
-            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            # Reload entry to apply updated settings
+            await self.hass.config_entries.async_reload(current_entry.entry_id)
             return self.async_create_entry(title="", data={})
 
-        current_data = self.config_entry.data
+        current_data = current_entry.data
 
-        # Options schema allowing user updates to Ft rate, sellback rate, BESS, and MEA points
+        # Options schema allowing user updates
         options_schema = vol.Schema(
             {
                 vol.Required(

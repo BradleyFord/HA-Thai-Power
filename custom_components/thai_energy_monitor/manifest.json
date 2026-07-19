@@ -9,7 +9,7 @@
   "integration_type": "hub",
   "iot_class": "calculated",
   "requirements": [
-    "holidays==0.35"
+    "holidays>=0.35"
   ],
   "version": "1.0.0"
 }
