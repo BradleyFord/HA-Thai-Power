@@ -15,14 +15,13 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
-    EntitySelector,
-    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    selector,
 )
 
 from .const import (
@@ -116,15 +115,9 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=NumberSelectorMode.BOX,
                     )
                 ),
-                vol.Required(CONF_GRID_IMPORT_SENSOR): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_GRID_EXPORT_SENSOR): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Required(CONF_SOLAR_PROD_SENSOR): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
-                ),
+                vol.Required(CONF_GRID_IMPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
+                vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(CONF_SOLAR_PROD_SENSOR): selector({"entity": {"domain": "sensor"}}),
             }
         )
 
@@ -181,15 +174,9 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         # Define schema without default values (pre-populated via add_suggested_values_to_schema)
         options_schema = vol.Schema(
             {
-                vol.Required(CONF_GRID_IMPORT_SENSOR): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_GRID_EXPORT_SENSOR): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Required(CONF_SOLAR_PROD_SENSOR): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
-                ),
+                vol.Required(CONF_GRID_IMPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
+                vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(CONF_SOLAR_PROD_SENSOR): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(CONF_TARIFF_CATEGORY): SelectSelector(
                     SelectSelectorConfig(
                         options=TARIFF_CATEGORIES,
@@ -227,9 +214,6 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Merge with current values (including options) to prepopulate form safely
         suggested_values = {
-            CONF_GRID_IMPORT_SENSOR: current_data.get(CONF_GRID_IMPORT_SENSOR),
-            CONF_GRID_EXPORT_SENSOR: current_data.get(CONF_GRID_EXPORT_SENSOR),
-            CONF_SOLAR_PROD_SENSOR: current_data.get(CONF_SOLAR_PROD_SENSOR),
             CONF_TARIFF_CATEGORY: current_data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2),
             CONF_FT_RATE: float(current_data.get(CONF_FT_RATE, DEFAULT_FT_RATE)),
             CONF_SOLAR_SELLBACK_RATE: float(current_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK)),
@@ -237,6 +221,13 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_MEA_EBILL: bool(current_data.get(CONF_MEA_EBILL, False)),
             CONF_MEA_EPAYMENT: bool(current_data.get(CONF_MEA_EPAYMENT, False)),
         }
+
+        if current_data.get(CONF_GRID_IMPORT_SENSOR):
+            suggested_values[CONF_GRID_IMPORT_SENSOR] = current_data[CONF_GRID_IMPORT_SENSOR]
+        if current_data.get(CONF_GRID_EXPORT_SENSOR):
+            suggested_values[CONF_GRID_EXPORT_SENSOR] = current_data[CONF_GRID_EXPORT_SENSOR]
+        if current_data.get(CONF_SOLAR_PROD_SENSOR):
+            suggested_values[CONF_SOLAR_PROD_SENSOR] = current_data[CONF_SOLAR_PROD_SENSOR]
 
         return self.async_show_form(
             step_id="init",
