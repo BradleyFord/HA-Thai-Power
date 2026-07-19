@@ -2,8 +2,8 @@
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
- * 30-day multi-trend SVG solar line chart (Solcast Max, Production, Self-Consumption, Export),
- * and multi-pattern HA entity slug matching.
+ * 30-day multi-trend SVG solar line chart, multi-pattern HA entity slug matching, and
+ * real HA recorder statistics API query for non-linear actual historical data.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -14,20 +14,71 @@ class ThaiEnergyPanel extends HTMLElement {
     this._activeTab = 'overview';
     this._data = {};
     this._rendered = false;
+    this._dailyStatsMap = {};
   }
 
   set hass(hass) {
+    const isFirst = !this._hass;
     this._hass = hass;
     this._extractData();
+
     if (!this._rendered) {
       this._initialRender();
     } else {
       this._updateDOMValues();
     }
+
+    if (isFirst) {
+      this._fetchHistoryData();
+    }
+  }
+
+  async _fetchHistoryData() {
+    if (!this._hass) return;
+
+    let importEntityId = null;
+    const states = this._hass.states;
+    for (const id in states) {
+      if (id.includes('monthly_grid_import_energy') || id.includes('monthly_import_kwh') || id.includes('grid_import_energy')) {
+        importEntityId = id;
+        break;
+      }
+    }
+
+    if (!importEntityId) return;
+
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    try {
+      const stats = await this._hass.callWS({
+        type: 'recorder/statistics_during_period',
+        start_time: startDate.toISOString(),
+        end_time: now.toISOString(),
+        statistic_ids: [importEntityId],
+        period: 'day',
+      });
+
+      if (stats && stats[importEntityId]) {
+        const statsList = stats[importEntityId];
+        const map = {};
+        statsList.forEach((st) => {
+          const dt = new Date(st.start);
+          const dayNum = dt.getDate();
+          map[dayNum] = st.change !== undefined ? st.change : (st.state || 0);
+        });
+        this._dailyStatsMap = map;
+        this._extractData();
+        if (this._rendered) {
+          this._initialRender();
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch HA recorder statistics during period:", err);
+    }
   }
 
   _getIsOffpeak(states) {
-    // 1. Check entity state for tou_window_status or tou_status
     for (const entityId in states) {
       if (entityId.includes('tou_window_status') || entityId.includes('tou_status')) {
         const st = states[entityId].state;
@@ -37,7 +88,6 @@ class ThaiEnergyPanel extends HTMLElement {
       }
     }
 
-    // 2. Check extra state attributes on any thai_energy entity
     for (const entityId in states) {
       if (entityId.includes('thai_energy') || entityId.includes('monthly_estimated_bill')) {
         const attrs = states[entityId].attributes;
@@ -52,15 +102,14 @@ class ThaiEnergyPanel extends HTMLElement {
       }
     }
 
-    // 3. Fallback: Direct Thailand Standard Time (UTC+7 / Asia/Bangkok) hour check
     const now = new Date();
     const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
     const thaiDate = new Date(utcMs + (3600000 * 7));
-    const day = thaiDate.getDay(); // 0 = Sunday, 6 = Saturday
+    const day = thaiDate.getDay();
     const hour = thaiDate.getHours();
 
-    if (day === 0 || day === 6) return true; // Weekend = Off-Peak
-    if (hour >= 22 || hour < 9) return true; // 10 PM - 9 AM = Off-Peak
+    if (day === 0 || day === 6) return true;
+    if (hour >= 22 || hour < 9) return true;
     return false;
   }
 
@@ -139,35 +188,50 @@ class ThaiEnergyPanel extends HTMLElement {
     const ftPct = Math.min(100, Math.round(((parseFloat(ftCharge) || 0) / totalBillNum) * 100));
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
-    // Generate cumulative monthly bill progression for days 1 to 30
+    // Generate cumulative monthly bill progression with actual recorder stats
     const today = new Date();
     const currentDay = Math.min(30, Math.max(1, today.getDate()));
     const totalBaseNum = parseFloat(baseCost) || 0;
     const totalFtNum = parseFloat(ftCharge) || 0;
     const totalServiceNum = parseFloat(serviceCharge) || 38.22;
     const totalVatNum = parseFloat(vatAmount) || 0;
+    const importKwhNum = Math.max(0.1, parseFloat(importKwh) || 1.0);
 
-    const monthlyDailyBars = [];
+    // Calculate actual cumulative kWh for elapsed days if stats map is available
+    let runningKwh = 0.0;
+    const dailyKwhList = [];
     for (let day = 1; day <= 30; day++) {
-      const isPastOrToday = day <= currentDay;
-      const progressRatio = day / 30.0;
+      if (day <= currentDay) {
+        const actualDailyKwh = this._dailyStatsMap[day] !== undefined ? parseFloat(this._dailyStatsMap[day]) : (importKwhNum / currentDay);
+        runningKwh += actualDailyKwh;
+        dailyKwhList.push({ day, runningKwh, isPastOrToday: true });
+      } else {
+        const projDailyKwh = importKwhNum / currentDay;
+        runningKwh += projDailyKwh;
+        dailyKwhList.push({ day, runningKwh, isPastOrToday: false });
+      }
+    }
 
-      const sVal = totalServiceNum * progressRatio;
-      const bVal = totalBaseNum * progressRatio;
-      const fVal = totalFtNum * progressRatio;
-      const vVal = totalVatNum * progressRatio;
+    const maxAccruedKwh = Math.max(0.1, runningKwh);
+
+    const monthlyDailyBars = dailyKwhList.map((item) => {
+      const ratio = Math.min(1.0, item.runningKwh / maxAccruedKwh);
+      const sVal = totalServiceNum * (item.day / 30.0);
+      const bVal = totalBaseNum * ratio;
+      const fVal = totalFtNum * ratio;
+      const vVal = totalVatNum * ratio;
       const dayCumulativeTotal = sVal + bVal + fVal + vVal;
 
-      monthlyDailyBars.push({
-        day: day,
+      return {
+        day: item.day,
         service: sVal,
         base: bVal,
         ft: fVal,
         vat: vVal,
         total: dayCumulativeTotal,
-        isPastOrToday: isPastOrToday,
-      });
-    }
+        isPastOrToday: item.isPastOrToday,
+      };
+    });
 
     // Generate 30-day Solar Monthly Trend Data for Line Chart
     const dailySolcastAvg = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 26.0;
@@ -707,9 +771,9 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
           </div>
 
-          <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis -->
+          <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis & HA Statistics Engine -->
           <div class="card full-width">
-            <h2>Cumulative Monthly Running Bill Progression (Days 1 to 30 Labeled Stacked Chart)</h2>
+            <h2>Cumulative Monthly Running Bill Progression (HA Database Recorder Statistics)</h2>
             <div class="chart-legend">
               <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service Charge</div>
               <div class="legend-item"><div class="legend-dot seg-base"></div> 2. Base Energy Charge</div>
@@ -750,7 +814,7 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
 
             <div class="note-box">
-              Cumulative monthly running bill progression with a labeled monetary Y-axis starting near ฿0 on Day 1 and accumulating steadily upward to Day 30 total estimated bill. Color-stacked in strict order: <strong>Fixed Service Charge</strong> (bottom) &rarr; <strong>Base Energy Charge</strong> &rarr; <strong>Ft Charge</strong> &rarr; <strong>VAT (7%)</strong> (top).
+              Non-linear actual daily consumption fetched directly from Home Assistant's <strong>recorder/statistics_during_period</strong> database for elapsed days, and projected forward for remaining days.
             </div>
           </div>
         </div>
@@ -972,7 +1036,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.1.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.1.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
