@@ -25,7 +25,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 SERVICE_ADJUST_MEA_POINTS = "adjust_mea_points"
 SERVICE_SCHEMA_ADJUST_MEA_POINTS = vol.Schema(
     {
-        vol.Required("points_delta"): cv.isin_or_int,
+        vol.Required("points_delta"): vol.Coerce(int),
     }
 )
 
