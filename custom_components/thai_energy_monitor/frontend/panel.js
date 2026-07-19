@@ -3,7 +3,7 @@
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
  * 30-day multi-trend SVG solar line chart, multi-pattern HA entity slug matching, and
- * direct Python coordinator baseline subtraction diagnostic panel.
+ * direct Python coordinator baseline subtraction diagnostic panel with configured/associated sensor telemetry.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -96,6 +96,13 @@ class ThaiEnergyPanel extends HTMLElement {
       return null;
     };
 
+    const getUnit = (entityId, fallback = 'kWh') => {
+      if (states[entityId] && states[entityId].attributes && states[entityId].attributes.unit_of_measurement) {
+        return states[entityId].attributes.unit_of_measurement;
+      }
+      return fallback;
+    };
+
     // Solcast PV Forecast Entity Search
     let solcastForecastToday = '0.00';
     let solcastPowerNow = '0.00';
@@ -138,9 +145,9 @@ class ThaiEnergyPanel extends HTMLElement {
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
     // Extract Baseline Variables for Debug Diagnostic Panel
-    const importSensorId = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_sensor_id') || 'sensor.pm2230_total_active_power';
-    const exportSensorId = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'export_sensor_id') || 'sensor.pm2230_total_active_power';
-    const solarSensorId = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_sensor_id') || 'sensor.inverter_active_power';
+    const importSensorId = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_sensor_id') || 'sensor.power_meter_consumption';
+    const exportSensorId = getAttribute(['monthly_estimated_bill', 'monthly_export_kwh'], 'export_sensor_id') || 'sensor.power_meter_exported';
+    const solarSensorId = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_sensor_id') || 'sensor.inverter_total_yield';
 
     const importBaseline = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'import_baseline_kwh');
     const solarBaseline = getAttribute(['monthly_estimated_bill', 'monthly_solar_kwh'], 'solar_baseline_kwh');
@@ -149,6 +156,20 @@ class ThaiEnergyPanel extends HTMLElement {
     const importCurrentReading = getEntityState([importSensorId]);
     const solarCurrentReading = getEntityState([solarSensorId]);
     const exportCurrentReading = getEntityState([exportSensorId]);
+
+    const importUnit = getUnit(importSensorId, 'kWh');
+    const solarUnit = getUnit(solarSensorId, 'kWh');
+    const exportUnit = getUnit(exportSensorId, 'kWh');
+
+    // Extract user configured active power & default placeholder sensors
+    const pm2230Power = getEntityState(['sensor.pm2230_total_active_power']);
+    const inverterPower = getEntityState(['sensor.inverter_active_power']);
+    const defaultGridImport = getEntityState(['sensor.grid_import_kwh']);
+    const defaultSolarProd = getEntityState(['sensor.solar_production_energy']);
+    const defaultGridExport = getEntityState(['sensor.grid_export_kwh']);
+
+    const pm2230PowerUnit = getUnit('sensor.pm2230_total_active_power', 'W');
+    const inverterPowerUnit = getUnit('sensor.inverter_active_power', 'W');
 
     // Extract 30-Day Historical Arrays from Python Coordinator Attributes
     const pyImportHistory = getAttribute(['monthly_estimated_bill', 'monthly_import_kwh'], 'daily_import_kwh_history') || [];
@@ -263,14 +284,26 @@ class ThaiEnergyPanel extends HTMLElement {
       importSensorId: importSensorId,
       exportSensorId: exportSensorId,
       solarSensorId: solarSensorId,
-      importBaseline: importBaseline !== null ? parseFloat(importBaseline).toFixed(3) : 'Riemann Integration Active (No Baseline Subtraction Required)',
-      solarBaseline: solarBaseline !== null ? parseFloat(solarBaseline).toFixed(3) : 'Riemann Integration Active (No Baseline Subtraction Required)',
-      exportBaseline: exportBaseline !== null ? parseFloat(exportBaseline).toFixed(3) : 'Riemann Integration Active (No Baseline Subtraction Required)',
+      importBaseline: importBaseline !== null ? parseFloat(importBaseline).toFixed(3) : 'Not Initialized',
+      solarBaseline: solarBaseline !== null ? parseFloat(solarBaseline).toFixed(3) : 'Not Initialized',
+      exportBaseline: exportBaseline !== null ? parseFloat(exportBaseline).toFixed(3) : 'Not Initialized',
       importCurrentReading: importCurrentReading,
       solarCurrentReading: solarCurrentReading,
       exportCurrentReading: exportCurrentReading,
+      importUnit: importUnit,
+      solarUnit: solarUnit,
+      exportUnit: exportUnit,
       currentDayOfCycle: currentDay,
       billingResetDay: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'billing_day') || '1',
+
+      // Additional User Configured Sensors
+      pm2230Power: pm2230Power,
+      inverterPower: inverterPower,
+      defaultGridImport: defaultGridImport,
+      defaultSolarProd: defaultSolarProd,
+      defaultGridExport: defaultGridExport,
+      pm2230PowerUnit: pm2230PowerUnit,
+      inverterPowerUnit: inverterPowerUnit,
     };
   }
 
@@ -837,22 +870,25 @@ class ThaiEnergyPanel extends HTMLElement {
                 <div class="debug-section">
                   <h4>Grid Energy Import</h4>
                   <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.importSensorId}</span></div>
-                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} kW/W</span></div>
-                  <div class="row"><span class="label">Calculated Cumulative Net</span><span class="val saving">${d.importKwh} kWh</span></div>
+                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} ${d.importUnit}</span></div>
+                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.importBaseline} kWh</span></div>
+                  <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${d.importKwh} kWh</span></div>
                 </div>
 
                 <div class="debug-section">
                   <h4>Solar Production</h4>
                   <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.solarSensorId}</span></div>
-                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} kW/W</span></div>
-                  <div class="row"><span class="label">Calculated Cumulative Net</span><span class="val saving">${d.solarKwh} kWh</span></div>
+                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} ${d.solarUnit}</span></div>
+                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.solarBaseline} kWh</span></div>
+                  <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${d.solarKwh} kWh</span></div>
                 </div>
 
                 <div class="debug-section">
                   <h4>Grid Energy Export</h4>
                   <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.exportSensorId}</span></div>
-                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} kW/W</span></div>
-                  <div class="row"><span class="label">Calculated Cumulative Net</span><span class="val saving">${d.exportKwh} kWh</span></div>
+                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} ${d.exportUnit}</span></div>
+                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.exportBaseline} kWh</span></div>
+                  <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${d.exportKwh} kWh</span></div>
                 </div>
 
                 <div class="debug-section">
@@ -860,6 +896,33 @@ class ThaiEnergyPanel extends HTMLElement {
                   <div class="row"><span class="label">Billing Reset Day</span><span class="val">Day ${d.billingResetDay} of Month</span></div>
                   <div class="row"><span class="label">Current Day of Cycle</span><span class="val">Day ${d.currentDayOfCycle} / 30</span></div>
                   <div class="row"><span class="label">Active Window</span><span class="val highlight">${d.touStatus}</span></div>
+                </div>
+
+                <!-- Additional User Configured Sensors Telemetry Section -->
+                <div class="debug-section" style="grid-column: 1 / -1; margin-top: 10px;">
+                  <h4 style="color: var(--warning-color, #ff9800);">Additional Configured Home Assistant Sensors</h4>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 13px;">
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Grid Power Load</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.pm2230_total_active_power</span><span class="val highlight">${d.pm2230Power} ${d.pm2230PowerUnit}</span></div>
+                    </div>
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Solar Active Power</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.inverter_active_power</span><span class="val highlight">${d.inverterPower} ${d.inverterPowerUnit}</span></div>
+                    </div>
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Default Grid Import</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${d.defaultGridImport} kWh</span></div>
+                    </div>
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Default Solar Prod</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${d.defaultSolarProd} kWh</span></div>
+                    </div>
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Default Grid Export</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${d.defaultGridExport} kWh</span></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1083,7 +1146,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.2.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 
