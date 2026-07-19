@@ -112,16 +112,14 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Thailand Energy & Solar Monitor."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow handler."""
-        super().__init__(config_entry)
-        self._config_entry = config_entry
-
     @property
     def config_entry(self) -> config_entries.ConfigEntry:
         """Return current config entry across HA versions."""
+        # Check standard attribute
         if hasattr(self, "_config_entry") and self._config_entry is not None:
             return self._config_entry
+        if hasattr(self, "config_entry") and self.config_entry is not None:
+            return self.config_entry
         return super().config_entry
 
     async def async_step_init(
