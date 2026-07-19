@@ -2,7 +2,7 @@
  * Thailand Energy & Solar Monitor - Native Home Assistant Sidebar Dashboard
  * Built with stable DOM data binding (zero flashing / zero click event destruction),
  * rich detailed metrics across 4 tabs, full-width monthly stacked cost chart, and
- * 3-layer resilient TOU peak/off-peak timezone resolution.
+ * multi-pattern HA entity slug matching.
  */
 
 class ThaiEnergyPanel extends HTMLElement {
@@ -68,22 +68,30 @@ class ThaiEnergyPanel extends HTMLElement {
 
     const states = this._hass.states;
 
-    const getEntityState = (key) => {
-      for (const entityId in states) {
-        if (entityId.includes(key)) {
-          const st = states[entityId].state;
-          if (st && st !== 'unavailable' && st !== 'unknown') {
-            return st;
+    const getEntityState = (possibleKeys) => {
+      const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
+      for (const key of keys) {
+        for (const entityId in states) {
+          if (entityId.includes(key)) {
+            const st = states[entityId].state;
+            if (st && st !== 'unavailable' && st !== 'unknown') {
+              return st;
+            }
           }
         }
       }
       return '0.00';
     };
 
-    const getAttribute = (key, attr) => {
-      for (const entityId in states) {
-        if (entityId.includes(key)) {
-          return states[entityId].attributes ? states[entityId].attributes[attr] : null;
+    const getAttribute = (possibleKeys, attr) => {
+      const keys = Array.isArray(possibleKeys) ? possibleKeys : [possibleKeys];
+      for (const key of keys) {
+        for (const entityId in states) {
+          if (entityId.includes(key)) {
+            if (states[entityId].attributes && states[entityId].attributes[attr] !== undefined) {
+              return states[entityId].attributes[attr];
+            }
+          }
         }
       }
       return null;
@@ -92,14 +100,14 @@ class ThaiEnergyPanel extends HTMLElement {
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
-    const totalBill = getEntityState('monthly_estimated_bill');
-    const baseCost = getEntityState('monthly_base_cost');
-    const ftCharge = getEntityState('monthly_ft_charge');
-    const serviceCharge = getEntityState('monthly_service_charge');
-    const vatAmount = getEntityState('monthly_vat_amount');
-    const importKwh = getEntityState('monthly_import_kwh');
-    const exportKwh = getEntityState('monthly_export_kwh');
-    const solarKwh = getEntityState('monthly_solar_kwh');
+    const totalBill = getEntityState(['monthly_estimated_bill', 'estimated_bill', 'total_estimated_bill']);
+    const baseCost = getEntityState(['monthly_base_energy_cost', 'monthly_base_cost', 'base_energy_cost', 'base_cost']);
+    const ftCharge = getEntityState(['monthly_ft_charge', 'ft_charge', 'accumulated_ft']);
+    const serviceCharge = getEntityState(['monthly_fixed_service_charge', 'monthly_service_charge', 'fixed_service_charge', 'service_charge']);
+    const vatAmount = getEntityState(['monthly_calculated_vat', 'monthly_vat_amount', 'calculated_vat', 'vat_amount']);
+    const importKwh = getEntityState(['monthly_grid_import_energy', 'monthly_import_kwh', 'grid_import_energy', 'import_kwh']);
+    const exportKwh = getEntityState(['monthly_grid_export_energy', 'monthly_export_kwh', 'grid_export_energy', 'export_kwh']);
+    const solarKwh = getEntityState(['monthly_solar_production_energy', 'monthly_solar_kwh', 'solar_production_energy', 'solar_kwh']);
 
     const solarKwhNum = parseFloat(solarKwh) || 0;
     const exportKwhNum = parseFloat(exportKwh) || 0;
@@ -153,27 +161,27 @@ class ThaiEnergyPanel extends HTMLElement {
       solarKwh: solarKwh,
       selfConsumedKwh: selfConsumedKwh.toFixed(2),
       selfConsumptionRatio: selfConsumptionRatio,
-      solarSavings: getEntityState('monthly_solar_savings'),
-      solarRevenue: getEntityState('monthly_solar_revenue'),
-      totalSolarBenefit: getEntityState('monthly_total_solar_benefit'),
-      lifetimeBenefit: getEntityState('lifetime_total_solar_benefit'),
-      lifetimeImport: getEntityState('lifetime_import_kwh'),
-      lifetimeSolar: getEntityState('lifetime_solar_kwh'),
-      marginalRate: getEntityState('active_marginal_retail_rate') || getEntityState('marginal_rate'),
-      gridPrice: getEntityState('current_grid_energy_import_price') || getEntityState('current_grid_price'),
-      ftRate: getEntityState('current_ft_adjustment_rate') || getEntityState('ft_rate'),
-      sellbackRate: getEntityState('solar_buy_back_rate') || getEntityState('sellback_rate'),
-      tariffDiff: getEntityState('predictive_tariff_difference') || getEntityState('tariff_diff'),
-      bessSavings: getEntityState('bess_storage_simulated_savings') || getEntityState('bess_savings'),
-      meaPoints: getEntityState('mea_virtual_points_balance') || getEntityState('mea_points'),
-      meaCash: getEntityState('mea_points_cash_value') || getEntityState('mea_cash'),
-      outageCost: getEntityState('grid_outage_economic_cost') || getEntityState('outage_cost'),
-      outageCount: getEntityState('grid_outage_incident_count') || getEntityState('outage_count'),
-      lastMonthBill: getEntityState('last_month_bill_thb') || getAttribute('monthly_estimated_bill', 'last_month_bill_thb') || '0.00',
-      lastMonthImport: getEntityState('last_month_import_kwh') || getAttribute('monthly_estimated_bill', 'last_month_import_kwh') || '0.00',
-      provider: getAttribute('monthly_estimated_bill', 'utility_provider') || 'MEA',
-      tariffCategory: getAttribute('monthly_estimated_bill', 'tariff_category') || '1.2',
-      opposingTariffName: getAttribute('monthly_estimated_bill', 'opposing_tariff_name') || 'TOU 1.3.2',
+      solarSavings: getEntityState(['monthly_solar_savings', 'solar_self_consumption_savings', 'solar_savings']),
+      solarRevenue: getEntityState(['monthly_solar_export_revenue', 'monthly_solar_revenue', 'solar_export_revenue', 'solar_revenue']),
+      totalSolarBenefit: getEntityState(['monthly_total_solar_benefit', 'monthly_solar_net_benefit', 'total_solar_benefit', 'solar_net_benefit']),
+      lifetimeBenefit: getEntityState(['lifetime_total_solar_benefit', 'lifetime_solar_net_benefit']),
+      lifetimeImport: getEntityState(['lifetime_grid_import_energy', 'lifetime_import_kwh']),
+      lifetimeSolar: getEntityState(['lifetime_solar_production_energy', 'lifetime_solar_kwh']),
+      marginalRate: getEntityState(['active_marginal_retail_rate', 'marginal_rate']),
+      gridPrice: getEntityState(['current_grid_energy_import_price', 'current_grid_price']),
+      ftRate: getEntityState(['current_ft_adjustment_rate', 'ft_rate']),
+      sellbackRate: getEntityState(['solar_buy_back_rate', 'sellback_rate']),
+      tariffDiff: getEntityState(['predictive_tariff_difference', 'tariff_diff']),
+      bessSavings: getEntityState(['bess_storage_simulated_savings', 'bess_savings']),
+      meaPoints: getEntityState(['mea_virtual_points_balance', 'mea_points']),
+      meaCash: getEntityState(['mea_points_cash_value', 'mea_cash']),
+      outageCost: getEntityState(['grid_outage_economic_cost', 'outage_cost']),
+      outageCount: getEntityState(['grid_outage_incident_count', 'outage_count']),
+      lastMonthBill: getEntityState('last_month_bill_thb') || getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'last_month_bill_thb') || '0.00',
+      lastMonthImport: getEntityState('last_month_import_kwh') || getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'last_month_import_kwh') || '0.00',
+      provider: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'utility_provider') || 'MEA',
+      tariffCategory: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'tariff_category') || '1.2',
+      opposingTariffName: getAttribute(['monthly_estimated_bill', 'estimated_bill'], 'opposing_tariff_name') || 'TOU 1.3.2',
       basePct: basePct,
       ftPct: ftPct,
       vatPct: vatPct,
@@ -764,7 +772,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.0.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.0.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 
