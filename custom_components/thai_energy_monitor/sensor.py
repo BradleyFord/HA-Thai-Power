@@ -44,24 +44,24 @@ async def async_setup_entry(
 
         # --- Dedicated HA Energy Dashboard Compatibility Entity ---
         ThaiEnergyCostSensor(
-            coordinator, entry, "current_grid_price", "Current Grid Energy Import Price", "THB/kWh", SensorDeviceClass.MONETARY, SensorStateClass.MEASUREMENT
+            coordinator, entry, "current_grid_price", "Current Grid Energy Import Price", "THB/kWh", None, SensorStateClass.MEASUREMENT
         ),
 
         # --- Current Monthly Billing Cycle Entities (Auto-reset on billing day) ---
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_estimated_bill", "Monthly Estimated Bill", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_estimated_bill", "Monthly Estimated Bill", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_base_cost", "Monthly Base Energy Cost", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_base_cost", "Monthly Base Energy Cost", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_ft_charge", "Monthly Ft Charge", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_ft_charge", "Monthly Ft Charge", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_service_charge", "Monthly Fixed Service Charge", "THB", SensorDeviceClass.MONETARY, SensorStateClass.MEASUREMENT
+            coordinator, entry, "monthly_service_charge", "Monthly Fixed Service Charge", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_vat_amount", "Monthly Calculated VAT (7%)", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_vat_amount", "Monthly Calculated VAT (7%)", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
             coordinator, entry, "monthly_import_kwh", "Monthly Grid Import Energy", "kWh", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING
@@ -73,13 +73,13 @@ async def async_setup_entry(
             coordinator, entry, "monthly_solar_kwh", "Monthly Solar Production Energy", "kWh", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_solar_savings_thb", "Monthly Solar Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_solar_savings_thb", "Monthly Solar Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_solar_revenue_thb", "Monthly Solar Export Revenue", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_solar_revenue_thb", "Monthly Solar Export Revenue", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_total_solar_benefit_thb", "Monthly Total Solar Benefit", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "monthly_total_solar_benefit_thb", "Monthly Total Solar Benefit", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
 
         # --- Lifetime Continuous Entities (Never reset) ---
@@ -93,13 +93,13 @@ async def async_setup_entry(
             coordinator, entry, "lifetime_solar_kwh", "Lifetime Solar Production Energy", "kWh", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "lifetime_solar_savings_thb", "Lifetime Solar Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "lifetime_solar_savings_thb", "Lifetime Solar Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "lifetime_solar_revenue_thb", "Lifetime Solar Revenue", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "lifetime_solar_revenue_thb", "Lifetime Solar Revenue", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "lifetime_total_solar_benefit_thb", "Lifetime Total Solar Benefit", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "lifetime_total_solar_benefit_thb", "Lifetime Total Solar Benefit", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
 
         # --- Instantaneous Rates & Prices ---
@@ -115,10 +115,10 @@ async def async_setup_entry(
 
         # --- Predictive Analytics & Simulation ---
         ThaiEnergyCostSensor(
-            coordinator, entry, "potential_tariff_diff_thb", "Predictive Tariff Difference", "THB", SensorDeviceClass.MONETARY, SensorStateClass.MEASUREMENT
+            coordinator, entry, "potential_tariff_diff_thb", "Predictive Tariff Difference", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "bess_simulated_savings_thb", "BESS Storage Simulated Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "bess_simulated_savings_thb", "BESS Storage Simulated Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
 
         # --- MEA Gamification & Outages ---
@@ -126,10 +126,10 @@ async def async_setup_entry(
             coordinator, entry, "mea_points", "MEA Virtual Points Balance", "pts", None, SensorStateClass.TOTAL_INCREASING
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "mea_points_cash_value", "MEA Points Cash Value", "THB", SensorDeviceClass.MONETARY, SensorStateClass.MEASUREMENT
+            coordinator, entry, "mea_points_cash_value", "MEA Points Cash Value", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
-            coordinator, entry, "economic_outage_loss_thb", "Grid Outage Economic Cost", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL_INCREASING
+            coordinator, entry, "economic_outage_loss_thb", "Grid Outage Economic Cost", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
             coordinator, entry, "outage_count", "Grid Outage Incident Count", "count", None, SensorStateClass.TOTAL_INCREASING
