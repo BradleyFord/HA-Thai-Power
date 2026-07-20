@@ -5,6 +5,7 @@
  * 30-day multi-trend SVG solar line chart with solid historical vs dashed predicted segments,
  * exact integration entity ID mapping to avoid collision, dynamic Peak/Off-Peak TOU chart option,
  * daily side-by-side bar chart showing volume (kWh) & value (THB) comparisons,
+ * 12-month historical database tariff comparison simulation lookback engine with chart & details,
  * and direct Python coordinator baseline subtraction diagnostic panel.
  */
 
@@ -15,6 +16,7 @@ class ThaiEnergyPanel extends HTMLElement {
     this._hass = null;
     this._activeTab = 'overview';
     this._dailyChartMode = 'kwh';
+    this._isAnalyzing = false;
     this._data = {};
     this._rendered = false;
   }
@@ -167,6 +169,12 @@ class ThaiEnergyPanel extends HTMLElement {
     const pyImportHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_import_kwh_history') || [];
     const pySolarHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_solar_kwh_history') || [];
     const pyExportHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_export_kwh_history') || [];
+
+    // Extract 12-Month lookback dataset from Python coordinator attributes
+    const lookbackData = getAttribute('sensor.monthly_estimated_bill', 'lookback_12_months_data');
+    if (lookbackData) {
+      this._isAnalyzing = false;
+    }
 
     const today = new Date();
     const currentDay = Math.min(30, Math.max(1, today.getDate()));
@@ -366,6 +374,7 @@ class ThaiEnergyPanel extends HTMLElement {
       monthlyDailyBars: monthlyDailyBars,
       solarMonthlyTrends: solarMonthlyTrends,
       dailyBreakdown: dailyBreakdown,
+      lookbackData: lookbackData,
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: solcastForecastToday,
       solcastPowerNow: solcastPowerNow,
@@ -425,6 +434,15 @@ class ThaiEnergyPanel extends HTMLElement {
         }
       });
     });
+
+    const btnTrigger = shadow.getElementById('btn-trigger-lookback');
+    if (btnTrigger) {
+      btnTrigger.addEventListener('click', () => {
+        this._isAnalyzing = true;
+        this._initialRender();
+        this._hass.callService('thai_energy_monitor', 'trigger_12_month_lookback', {});
+      });
+    }
   }
 
   _updateDOMValues() {
@@ -571,6 +589,58 @@ class ThaiEnergyPanel extends HTMLElement {
           <span>฿${(maxVal * 0.25).toFixed(1)}</span>
           <span>฿0</span>
         `;
+
+    // 12-Month Lookback Chart & HTML Render calculations
+    let lookbackColumnsHtml = '';
+    let lookbackXLabelsHtml = '';
+    let lookbackMaxVal = 100.0;
+
+    if (d.lookbackData && Array.isArray(d.lookbackData)) {
+      lookbackMaxVal = Math.max(100.0, ...d.lookbackData.map(r => Math.max(r.tiered_cost, r.tou_cost)));
+      const lSvgW = 630;
+      const lSvgH = 150;
+      const lStepX = lSvgW / 12.0;
+      const lColW = 14;
+
+      const getLColY = (val) => (lSvgH - ((val / lookbackMaxVal) * (lSvgH - 20))).toFixed(1);
+      const getLColHeight = (val) => (((val / lookbackMaxVal) * (lSvgH - 20))).toFixed(1);
+
+      lookbackColumnsHtml = d.lookbackData.map((row, idx) => {
+        const xStart = idx * lStepX;
+        const xTiered = (xStart + 10).toFixed(1);
+        const xTou = (xStart + 26).toFixed(1);
+
+        const yTiered = getLColY(row.tiered_cost);
+        const hTiered = getLColHeight(row.tiered_cost);
+
+        const yTou = getLColY(row.tou_cost);
+        const hTou = getLColHeight(row.tou_cost);
+
+        const benefitText = row.savings >= 0
+          ? `Benefit: +฿${row.savings.toFixed(2)}`
+          : `Penalty: -฿${Math.abs(row.savings).toFixed(2)}`;
+
+        return `
+          <!-- Tiered Cost (Blue) -->
+          <rect x="${xTiered}" y="${yTiered}" width="${lColW}" height="${hTiered}" fill="#3b82f6" rx="3">
+            <title>Month: ${row.month}\nTiered Tariff 1.2: ฿${row.tiered_cost.toFixed(2)}\n${benefitText}</title>
+          </rect>
+          
+          <!-- TOU Cost (Cyan) -->
+          <rect x="${xTou}" y="${yTou}" width="${lColW}" height="${hTou}" fill="#0ea5e9" rx="3">
+            <title>Month: ${row.month}\nTOU Tariff 1.3.2: ฿${row.tou_cost.toFixed(2)}\n${benefitText}</title>
+          </rect>
+        `;
+      }).join('');
+
+      lookbackXLabelsHtml = d.lookbackData.map((row) => {
+        const parts = row.month.split('-');
+        const monthNum = parseInt(parts[1] || '1', 10);
+        const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const label = monthsShort[monthNum - 1] || row.month;
+        return `<span style="width: 52px; text-align: center;">${label}</span>`;
+      }).join('');
+    }
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -1113,7 +1183,7 @@ class ThaiEnergyPanel extends HTMLElement {
             </div>
           </div>
 
-          <!-- New Card: Daily Import vs Solar Comparison (Interactive Mode Toggle) -->
+          <!-- Card: Daily Import vs Solar Comparison (Interactive Mode Toggle) -->
           <div class="card full-width">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); padding-bottom: 10px; margin-bottom: 16px;">
               <h2 style="border-bottom: none; padding-bottom: 0; margin: 0;">Daily Grid Import vs Solar Production</h2>
@@ -1372,6 +1442,102 @@ class ThaiEnergyPanel extends HTMLElement {
       <!-- Tab 3: Detailed Tariff Optimizer -->
       ${this._activeTab === 'predictive' ? `
         <div class="grid">
+          <div class="card full-width">
+            <h2>Tariff Switch Justification Engine</h2>
+            <p style="font-size: 14px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.5; margin-bottom: 20px;">
+              To make an informed decision on whether to transition from Tiered Tariff 1.2 to TOU Tariff 1.3.2, you can run a lookback simulation over your past 12 months of Home Assistant recorder database history. This will show how seasonal temperature changes (e.g. summer air-conditioning loads vs winter) affect your monthly bills under both structures.
+            </p>
+
+            ${!d.lookbackData ? `
+              <div style="text-align: center; padding: 40px 20px; border: 1px dashed var(--divider-color, rgba(255, 255, 255, 0.12)); border-radius: 8px;">
+                <div style="font-size: 15px; margin-bottom: 16px; color: var(--primary-text-color, #ffffff);">
+                  No lookback simulation has been run for this cycle yet.
+                </div>
+                <button class="action-btn" id="btn-trigger-lookback" style="background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px 24px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; outline: none; transition: background-color 0.2s;">
+                  ${this._isAnalyzing ? '⏳ Running Database Analysis...' : '🔍 Trigger 12-Month Lookback Analysis'}
+                </button>
+              </div>
+            ` : `
+              <!-- Lookback Simulation Results -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 15px; font-weight: 500; color: #fff;">12-Month Simulation Cost Comparison (THB)</h3>
+                <button class="action-btn" id="btn-trigger-lookback" style="background-color: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 12px; font-size: 12px; cursor: pointer; outline: none;">
+                  ${this._isAnalyzing ? '⏳ Re-running...' : '🔄 Re-run Analysis'}
+                </button>
+              </div>
+
+              <!-- 12-Month Comparison SVG Bar Chart -->
+              <div class="chart-wrapper" style="margin-bottom: 24px;">
+                <div class="y-axis">
+                  <span>฿${lookbackMaxVal.toFixed(0)}</span>
+                  <span>฿${(lookbackMaxVal * 0.75).toFixed(0)}</span>
+                  <span>฿${(lookbackMaxVal * 0.50).toFixed(0)}</span>
+                  <span>฿${(lookbackMaxVal * 0.25).toFixed(0)}</span>
+                  <span>฿0</span>
+                </div>
+                <div class="svg-chart-container">
+                  <svg viewBox="0 0 630 150" preserveAspectRatio="none" style="width: 100%; height: 100%; overflow: visible;">
+                    <!-- Grid Lines -->
+                    <line x1="0" y1="0" x2="630" y2="0" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                    <line x1="0" y1="32.5" x2="630" y2="32.5" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                    <line x1="0" y1="65" x2="630" y2="65" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                    <line x1="0" y1="97.5" x2="630" y2="97.5" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                    <line x1="0" y1="130" x2="630" y2="130" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+
+                    <!-- Columns -->
+                    ${lookbackColumnsHtml}
+                  </svg>
+                  
+                  <div class="svg-x-axis-labels" style="display: flex; justify-content: space-between; font-size: 10px; color: #9e9e9e; margin-top: 6px;">
+                    ${lookbackXLabelsHtml}
+                  </div>
+                </div>
+              </div>
+
+              <div class="chart-legend" style="margin-bottom: 24px;">
+                <div class="legend-item"><div class="legend-dot" style="background-color: #3b82f6;"></div> 1. Tiered Tariff 1.2 Cost</div>
+                <div class="legend-item"><div class="legend-dot" style="background-color: #0ea5e9;"></div> 2. TOU Tariff 1.3.2 Cost</div>
+                <div style="font-size: 11px; color: var(--secondary-text-color, #9e9e9e); margin-left: auto;">
+                  (Hover over bars to view detailed monthly savings)
+                </div>
+              </div>
+
+              <!-- Detailed Historical Monthly Cost Table -->
+              <h3 style="margin-bottom: 12px; font-size: 15px; font-weight: 500; color: #fff;">Detailed Monthly Value Breakdown</h3>
+              <div style="overflow-x: auto; background-color: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; color: var(--primary-text-color, #fff);">
+                  <thead>
+                    <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Month</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Total Import</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Peak/Off-Peak split</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Tiered 1.2 Cost</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">TOU 1.3.2 Cost</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Switch Benefit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${d.lookbackData.map(row => {
+                      const savingClass = row.savings >= 0 ? 'saving' : 'warning';
+                      const benefitText = row.savings >= 0 ? `+฿${row.savings.toFixed(2)}` : `-฿${Math.abs(row.savings).toFixed(2)}`;
+                      return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                          <td style="padding: 10px 14px; font-weight: 500;">${row.month}</td>
+                          <td style="padding: 10px 14px;">${row.total_kwh.toFixed(1)} kWh</td>
+                          <td style="padding: 10px 14px; color: #9e9e9e;">${row.peak_kwh.toFixed(1)} P / ${row.offpeak_kwh.toFixed(1)} OP</td>
+                          <td style="padding: 10px 14px;">฿${row.tiered_cost.toFixed(2)}</td>
+                          <td style="padding: 10px 14px;">฿${row.tou_cost.toFixed(2)}</td>
+                          <td style="padding: 10px 14px; font-weight: 600;" class="${savingClass}">${benefitText}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+
+          <!-- Existing Tariff details cards -->
           <div class="card">
             <h2>Phantom Tariff Optimizer</h2>
             <div class="metric-main ${diffClass}">${diffText}</div>
@@ -1388,9 +1554,6 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="label">Optimized Tariff Recommendation</span>
                 <span class="val ${diffClass}">${diffVal >= 0 ? 'Stay on Tariff ' + d.tariffCategory : 'Switch to ' + d.opposingTariffName}</span>
               </div>
-            </div>
-            <div class="note-box">
-              Runs a background phantom calculation engine processing your exact consumption through opposing tariff structures to highlight potential monthly savings.
             </div>
           </div>
 
@@ -1457,7 +1620,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 

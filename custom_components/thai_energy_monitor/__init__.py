@@ -28,6 +28,7 @@ SERVICE_SCHEMA_ADJUST_MEA_POINTS = vol.Schema(
         vol.Required("points_delta"): vol.Coerce(int),
     }
 )
+SERVICE_TRIGGER_12_MONTH_LOOKBACK = "trigger_12_month_lookback"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -54,6 +55,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_ADJUST_MEA_POINTS,
             async_handle_adjust_mea_points,
             schema=SERVICE_SCHEMA_ADJUST_MEA_POINTS,
+        )
+
+    # Register custom service to trigger 12-month historical lookback comparison
+    async def async_handle_trigger_12_month_lookback(call: ServiceCall) -> None:
+        await coordinator.async_calculate_12_month_lookback()
+
+    if not hass.services.has_service(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_TRIGGER_12_MONTH_LOOKBACK,
+            async_handle_trigger_12_month_lookback,
         )
 
     # --- Modern Asynchronous Frontend Registration ---
@@ -104,5 +116,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception:
                 pass
             hass.services.async_remove(DOMAIN, SERVICE_ADJUST_MEA_POINTS)
+            hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK)
 
     return unload_ok

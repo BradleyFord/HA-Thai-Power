@@ -198,6 +198,7 @@ class ThaiEnergyCostSensor(
             "daily_import_kwh_history": self.coordinator.data.get("daily_import_kwh_history"),
             "daily_solar_kwh_history": self.coordinator.data.get("daily_solar_kwh_history"),
             "daily_export_kwh_history": self.coordinator.data.get("daily_export_kwh_history"),
+            "lookback_12_months_data": getattr(self.coordinator, "lookback_12_months_data", None),
         }
 
     @property
