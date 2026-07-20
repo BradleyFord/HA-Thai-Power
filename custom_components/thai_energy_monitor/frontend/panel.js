@@ -99,15 +99,15 @@ class ThaiEnergyPanel extends HTMLElement {
     const getEntityState = (key) => {
       if (states[key]) {
         const st = states[key].state;
-        if (st && st !== 'unavailable' && st !== 'unknown') {
+        if (st !== undefined && st !== null && st !== 'unavailable' && st !== 'unknown' && st !== '0.00' && st !== '0') {
           return st;
         }
       }
-      return '0.00';
+      return null;
     };
 
     const getAttribute = (key, attr) => {
-      if (states[key] && states[key].attributes && states[key].attributes[attr] !== undefined) {
+      if (states[key] && states[key].attributes && states[key].attributes[attr] !== undefined && states[key].attributes[attr] !== null) {
         return states[key].attributes[attr];
       }
       return null;
@@ -151,21 +151,22 @@ class ThaiEnergyPanel extends HTMLElement {
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
-    // Map exact sensor names to eliminate collision with any other integration sensors
-    const accruedBill = getEntityState('sensor.monthly_accrued_bill') || getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_bill') || '0.00';
+    // Map exact sensor names with multi-alias fallbacks & coordinator attribute resolution
+    const importKwh = getEntityState('sensor.monthly_grid_import_energy') || getEntityState('sensor.monthly_import_kwh') || getAttribute('sensor.monthly_estimated_bill', 'monthly_import_kwh') || '0.00';
+    const exportKwh = getEntityState('sensor.monthly_grid_export_energy') || getEntityState('sensor.monthly_export_kwh') || getAttribute('sensor.monthly_estimated_bill', 'monthly_export_kwh') || '0.00';
+    const solarKwh = getEntityState('sensor.monthly_solar_production_energy') || getEntityState('sensor.monthly_solar_kwh') || getAttribute('sensor.monthly_estimated_bill', 'monthly_solar_kwh') || '0.00';
+
+    const accruedBill = getEntityState('sensor.monthly_accrued_bill_to_date') || getEntityState('sensor.monthly_accrued_bill') || getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_bill') || '0.00';
     const accruedBaseCost = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_base_cost') || '0.00';
     const accruedFtCharge = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_ft_charge') || '0.00';
     const accruedVatAmount = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_vat_amount') || '0.00';
     const projectedImport = getAttribute('sensor.monthly_estimated_bill', 'projected_monthly_import') || '0.00';
 
-    const totalBill = getEntityState('sensor.monthly_estimated_bill');
-    const baseCost = getEntityState('sensor.monthly_base_energy_cost');
-    const ftCharge = getEntityState('sensor.monthly_ft_charge');
-    const serviceCharge = getEntityState('sensor.monthly_fixed_service_charge');
-    const vatAmount = getEntityState('sensor.monthly_calculated_vat_7');
-    const importKwh = getEntityState('sensor.monthly_grid_import_energy');
-    const exportKwh = getEntityState('sensor.monthly_grid_export_energy');
-    const solarKwh = getEntityState('sensor.monthly_solar_production_energy');
+    const totalBill = getEntityState('sensor.monthly_estimated_bill') || getAttribute('sensor.monthly_estimated_bill', 'monthly_estimated_bill') || '0.00';
+    const baseCost = getEntityState('sensor.monthly_base_energy_cost') || getEntityState('sensor.monthly_base_cost') || getAttribute('sensor.monthly_estimated_bill', 'monthly_base_cost') || '0.00';
+    const ftCharge = getEntityState('sensor.monthly_ft_charge') || getAttribute('sensor.monthly_estimated_bill', 'monthly_ft_charge') || '0.00';
+    const serviceCharge = getEntityState('sensor.monthly_fixed_service_charge') || getEntityState('sensor.monthly_service_charge') || getAttribute('sensor.monthly_estimated_bill', 'monthly_service_charge') || '38.22';
+    const vatAmount = getEntityState('sensor.monthly_calculated_vat_7') || getEntityState('sensor.monthly_vat_amount') || getAttribute('sensor.monthly_estimated_bill', 'monthly_vat_amount') || '0.00';
 
     const solarKwhNum = parseFloat(solarKwh) || 0;
     const exportKwhNum = parseFloat(exportKwh) || 0;
@@ -2130,7 +2131,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
