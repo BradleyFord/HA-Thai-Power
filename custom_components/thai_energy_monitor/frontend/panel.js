@@ -1127,37 +1127,6 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val" id="val-vat-amount">฿${d.vatAmount}</span>
               </div>
             </div>
-
-            <div class="progress-container">
-              ${d.isTou ? `
-                <div class="bar-label">
-                  <span>Peak (${d.peakPct}%)</span>
-                  <span>Off-Peak (${d.offpeakPct}%)</span>
-                  <span>Ft (${d.ftPct}%)</span>
-                  <span>VAT (${d.vatPct}%)</span>
-                </div>
-                <div class="bar-bg">
-                  <div class="bar-segment seg-peak" style="width: ${d.peakPct}%"></div>
-                  <div class="bar-segment seg-offpeak" style="width: ${d.offpeakPct}%"></div>
-                  <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
-                  <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
-                </div>
-              ` : `
-                <div class="bar-label">
-                  <span>Tier 1 (${d.t1Pct}%)</span>
-                  <span>Tier 2 (${d.t2Pct}%)</span>
-                  <span>Tier 3 (${d.t3Pct}%)</span>
-                  <span>Ft (${d.ftPct}%)</span>
-                  <span>VAT (${d.vatPct}%)</span>
-                </div>
-                <div class="bar-bg">
-                  <div class="bar-segment seg-tier1" style="width: ${d.t1Pct}%"></div>
-                  <div class="bar-segment seg-tier2" style="width: ${d.t2Pct}%"></div>
-                  <div class="bar-segment seg-tier3" style="width: ${d.t3Pct}%"></div>
-                  <div class="bar-segment seg-ft" style="width: ${d.ftPct}%"></div>
-                  <div class="bar-segment seg-vat" style="width: ${d.vatPct}%"></div>
-                </div>
-              `}
             </div>
           </div>
 
@@ -1877,7 +1846,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.4 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.5 &bull; Home Assistant Custom Integration
       </div>
     `;
 
