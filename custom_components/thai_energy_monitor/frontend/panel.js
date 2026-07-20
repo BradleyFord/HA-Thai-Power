@@ -252,17 +252,37 @@ class ThaiEnergyPanel extends HTMLElement {
     const avgDailySolar = currentDay > 0 ? (solarKwhNum / currentDay) : 15.0;
     const avgDailyExport = currentDay > 0 ? (exportKwhNum / currentDay) : 2.0;
 
+    // Calculate past days unscaled sums to normalize chart progression with actual accrued sensor readings
+    let pastUnscaledImportSum = 0.0;
+    let pastUnscaledSolarSum = 0.0;
+    for (let day = 1; day <= currentDay; day++) {
+      let imp = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 0;
+      if (!imp || imp < 0.1) imp = avgDailyImport;
+      pastUnscaledImportSum += imp;
+
+      let sol = pySolarHistory[day - 1] !== undefined ? parseFloat(pySolarHistory[day - 1]) : 0;
+      if (!sol || sol < 0.1) sol = avgDailySolar;
+      pastUnscaledSolarSum += sol;
+    }
+
+    const importScale = (pastUnscaledImportSum > 0 && importKwhNum > 0) ? (importKwhNum / pastUnscaledImportSum) : 1.0;
+    const solarScale = (pastUnscaledSolarSum > 0 && solarKwhNum > 0) ? (solarKwhNum / pastUnscaledSolarSum) : 1.0;
+
     // Generate non-linear cumulative monthly bill progression with 3 Base tiers or TOU Peak/Off-Peak split
     let runningKwh = 0.0;
     const dailyKwhList = [];
     for (let day = 1; day <= 30; day++) {
       const isPastOrToday = day <= currentDay;
-      let dayKwh = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 0;
-      if (!dayKwh || dayKwh < 0.1) {
+      let dayKwh = 0.0;
+      if (isPastOrToday) {
+        let rawKwh = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 0;
+        if (!rawKwh || rawKwh < 0.1) rawKwh = avgDailyImport;
+        dayKwh = rawKwh * importScale;
+      } else {
         dayKwh = avgDailyImport;
       }
       runningKwh += dayKwh;
-      dailyKwhList.push({ day, runningKwh, isPastOrToday });
+      dailyKwhList.push({ day, dayKwh, runningKwh, isPastOrToday });
     }
 
     const maxAccruedKwh = Math.max(0.1, runningKwh);
@@ -312,14 +332,27 @@ class ThaiEnergyPanel extends HTMLElement {
     const dailyBreakdown = [];
     for (let i = 0; i < 30; i++) {
       const dayNum = i + 1;
+      const isPastOrToday = dayNum <= currentDay;
       const bar = monthlyDailyBars[i];
       const prevBar = i > 0 ? monthlyDailyBars[i - 1] : { tier1: 0, tier2: 0, tier3: 0, ft: 0, peak: 0, offpeak: 0 };
       
-      let impKwh = pyImportHistory[i] !== undefined ? parseFloat(pyImportHistory[i]) : 0;
-      if (!impKwh || impKwh < 0.1) impKwh = avgDailyImport;
+      let impKwh = 0.0;
+      if (isPastOrToday) {
+        let rawImp = pyImportHistory[i] !== undefined ? parseFloat(pyImportHistory[i]) : 0;
+        if (!rawImp || rawImp < 0.1) rawImp = avgDailyImport;
+        impKwh = rawImp * importScale;
+      } else {
+        impKwh = avgDailyImport;
+      }
 
-      let solKwh = pySolarHistory[i] !== undefined ? parseFloat(pySolarHistory[i]) : 0;
-      if (!solKwh || solKwh < 0.1) solKwh = avgDailySolar;
+      let solKwh = 0.0;
+      if (isPastOrToday) {
+        let rawSol = pySolarHistory[i] !== undefined ? parseFloat(pySolarHistory[i]) : 0;
+        if (!rawSol || rawSol < 0.1) rawSol = avgDailySolar;
+        solKwh = rawSol * solarScale;
+      } else {
+        solKwh = avgDailySolar;
+      }
 
       let expKwh = pyExportHistory[i] !== undefined ? parseFloat(pyExportHistory[i]) : 0;
       if (!expKwh || expKwh < 0.01) expKwh = avgDailyExport;
@@ -2139,7 +2172,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.4 &bull; Home Assistant Custom Integration
       </div>
     `;
 
