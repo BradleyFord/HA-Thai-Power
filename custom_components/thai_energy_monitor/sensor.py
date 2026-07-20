@@ -208,6 +208,8 @@ class ThaiEnergyCostSensor(
             "bess_capex_cost": self.coordinator.data.get("bess_capex_cost") or getattr(self.coordinator, "bess_capex_cost", 50000.0),
             "bess_grid_charging": self.coordinator.config_data.get("bess_grid_charging", False),
             "bess_tariff_model": self.coordinator.config_data.get("bess_tariff_model", "tou"),
+            "lifetime_solar_savings_thb": self.coordinator.data.get("lifetime_solar_savings_thb", 0.0),
+            "lifetime_solar_revenue_thb": self.coordinator.data.get("lifetime_solar_revenue_thb", 0.0),
             "billing_day": self.entry.data.get("billing_day") or 1,
             "current_day_of_cycle": self.coordinator.get_billing_cycle_day(dt_util.now()),
             "ft_rate": self.coordinator.config_data.get("ft_rate") or 0.3950,

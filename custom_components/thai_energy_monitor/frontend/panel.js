@@ -380,6 +380,8 @@ class ThaiEnergyPanel extends HTMLElement {
       solarRevenue: getEntityState('sensor.monthly_solar_export_revenue'),
       totalSolarBenefit: getEntityState('sensor.monthly_total_solar_benefit'),
       lifetimeBenefit: getEntityState('sensor.lifetime_total_solar_benefit'),
+      lifetimeSolarSavings: getEntityState('sensor.lifetime_solar_savings') || getAttribute('sensor.monthly_estimated_bill', 'lifetime_solar_savings_thb') || '0.00',
+      lifetimeSolarRevenue: getEntityState('sensor.lifetime_solar_revenue') || getAttribute('sensor.monthly_estimated_bill', 'lifetime_solar_revenue_thb') || '0.00',
       lifetimeImport: getEntityState('sensor.lifetime_grid_import_energy'),
       lifetimeSolar: getEntityState('sensor.lifetime_solar_production_energy'),
       marginalRate: getEntityState('sensor.active_marginal_retail_rate'),
@@ -514,11 +516,33 @@ class ThaiEnergyPanel extends HTMLElement {
           const capex = parseFloat(capexInput.value) || 50000.0;
           const gridCharge = gridChargeInput ? gridChargeInput.checked === true : false;
           const tariffModel = tariffModelInput ? tariffModelInput.value : 'tou';
+          
+          const origHtml = btnSaveBess.innerHTML;
+          btnSaveBess.innerHTML = '⏳ Saving & Recalculating...';
+          btnSaveBess.style.backgroundColor = 'var(--warning-color, #ff9800)';
+          btnSaveBess.disabled = true;
+
           this._hass.callService('thai_energy_monitor', 'configure_bess', {
             battery_capacity: cap,
             capex_cost: capex,
             grid_charging: gridCharge,
             tariff_model: tariffModel
+          }).then(() => {
+            btnSaveBess.innerHTML = '✅ Saved & Recalculated!';
+            btnSaveBess.style.backgroundColor = 'var(--success-color, #4caf50)';
+            setTimeout(() => {
+              btnSaveBess.innerHTML = origHtml;
+              btnSaveBess.style.backgroundColor = 'var(--primary-color, #03a9f4)';
+              btnSaveBess.disabled = false;
+            }, 1800);
+          }).catch(() => {
+            btnSaveBess.innerHTML = '✅ Saved & Recalculated!';
+            btnSaveBess.style.backgroundColor = 'var(--success-color, #4caf50)';
+            setTimeout(() => {
+              btnSaveBess.innerHTML = origHtml;
+              btnSaveBess.style.backgroundColor = 'var(--primary-color, #03a9f4)';
+              btnSaveBess.disabled = false;
+            }, 1800);
           });
         }
       });
@@ -538,6 +562,11 @@ class ThaiEnergyPanel extends HTMLElement {
         const meaEbill = shadow.getElementById('setting-mea-ebill')?.checked === true;
         const meaEpayment = shadow.getElementById('setting-mea-epayment')?.checked === true;
 
+        const origHtml = btnSaveSettings.innerHTML;
+        btnSaveSettings.innerHTML = '⏳ Saving Configuration...';
+        btnSaveSettings.style.backgroundColor = 'var(--warning-color, #ff9800)';
+        btnSaveSettings.disabled = true;
+
         this._hass.callService('thai_energy_monitor', 'configure_settings', {
           utility_provider: utilityProvider,
           tariff_category: tariffCategory,
@@ -549,6 +578,22 @@ class ThaiEnergyPanel extends HTMLElement {
           solar_sellback_rate: sellbackRate,
           mea_ebill_active: meaEbill,
           mea_epayment_active: meaEpayment
+        }).then(() => {
+          btnSaveSettings.innerHTML = '✅ Configuration Saved & Reloaded!';
+          btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
+          setTimeout(() => {
+            btnSaveSettings.innerHTML = origHtml;
+            btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
+            btnSaveSettings.disabled = false;
+          }, 1800);
+        }).catch(() => {
+          btnSaveSettings.innerHTML = '✅ Configuration Saved!';
+          btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
+          setTimeout(() => {
+            btnSaveSettings.innerHTML = origHtml;
+            btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
+            btnSaveSettings.disabled = false;
+          }, 1800);
         });
       });
     }
@@ -579,14 +624,19 @@ class ThaiEnergyPanel extends HTMLElement {
     setText('val-vat-amount', `฿${this._formatNum(d.vatAmount)}`);
     setText('val-import-kwh', this._formatNum(d.importKwh));
     setText('val-solar-benefit', `฿${d.totalSolarBenefit}`);
-    setText('val-solar-savings', `฿${d.solarSavings}`);
-    setText('val-solar-revenue', `฿${d.solarRevenue}`);
+    setText('val-solar-savings-main', `฿${this._formatNum(d.solarSavings)}`);
+    setText('val-solar-savings', `฿${this._formatNum(d.solarSavings)}`);
+    setText('val-solar-revenue-main', `฿${this._formatNum(d.solarRevenue)}`);
+    setText('val-solar-revenue', `฿${this._formatNum(d.solarRevenue)}`);
 
-    // Dynamic updates for Solar Net Billing ROI Breakdown Card
+    // Dynamic updates for Solar Cards
     setText('val-solar-volume', `${d.solarKwh} kWh`);
     setText('val-self-consumed-volume', `${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)`);
     setText('val-grid-export-volume', `${d.exportKwh} kWh`);
+    setText('val-lifetime-savings', `฿${this._formatNum(d.lifetimeSolarSavings)}`);
+    setText('val-lifetime-revenue', `฿${this._formatNum(d.lifetimeSolarRevenue)}`);
     setText('val-lifetime-benefit', `฿${d.lifetimeBenefit}`);
+    setText('val-sellback-rate-display', `฿${d.sellbackRate} / kWh`);
     setText('val-cycle-day', `Day ${d.currentDayOfCycle} / 30`);
 
     // Dynamic updates for Solcast Card
@@ -1417,16 +1467,12 @@ class ThaiEnergyPanel extends HTMLElement {
       ${this._activeTab === 'solar' ? `
         <div class="grid">
           <div class="card">
-            <h2>Solar Net Billing ROI Breakdown</h2>
-            <div class="metric-main saving" id="val-solar-benefit">฿${d.totalSolarBenefit}</div>
+            <h2>Solar Self-Consumption Savings</h2>
+            <div class="metric-main saving" id="val-solar-savings-main">฿${this._formatNum(d.solarSavings)}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Self-Consumption Savings (Riemann Integration)</span>
-                <span class="val saving" id="val-solar-savings">฿${d.solarSavings}</span>
-              </div>
-              <div class="row">
-                <span class="label">Export Buy-Back Revenue (${d.sellbackRate} ฿/kWh)</span>
-                <span class="val saving" id="val-solar-revenue">฿${d.solarRevenue}</span>
+                <span class="label">Monthly Self-Consumption Savings</span>
+                <span class="val saving" id="val-solar-savings">฿${this._formatNum(d.solarSavings)}</span>
               </div>
               <div class="row">
                 <span class="label">Total Solar Production Volume</span>
@@ -1437,12 +1483,31 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val" id="val-self-consumed-volume">${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)</span>
               </div>
               <div class="row">
+                <span class="label">Lifetime Self-Consumption Savings</span>
+                <span class="val saving" id="val-lifetime-savings">฿${this._formatNum(d.lifetimeSolarSavings)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Solar Export Buy-Back Revenue</h2>
+            <div class="metric-main saving" id="val-solar-revenue-main">฿${this._formatNum(d.solarRevenue)}</div>
+            <div class="table-rows">
+              <div class="row">
+                <span class="label">Monthly Grid Export Revenue</span>
+                <span class="val saving" id="val-solar-revenue">฿${this._formatNum(d.solarRevenue)}</span>
+              </div>
+              <div class="row">
+                <span class="label">Export Buy-Back Tariff Rate</span>
+                <span class="val" id="val-sellback-rate-display">฿${d.sellbackRate} / kWh</span>
+              </div>
+              <div class="row">
                 <span class="label">Grid Export Volume</span>
                 <span class="val" id="val-grid-export-volume">${d.exportKwh} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Lifetime Solar Net Benefit</span>
-                <span class="val saving" id="val-lifetime-benefit">฿${d.lifetimeBenefit}</span>
+                <span class="label">Lifetime Grid Export Revenue</span>
+                <span class="val saving" id="val-lifetime-revenue">฿${this._formatNum(d.lifetimeSolarRevenue)}</span>
               </div>
             </div>
           </div>
@@ -1967,7 +2032,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.6.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.6.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
