@@ -247,9 +247,6 @@ class ThaiEnergyPanel extends HTMLElement {
     const offpeakRate = tariffCategory === '1.3.1' ? 2.6295 : 2.6369;
 
     const importKwhNum = parseFloat(importKwh) || 0;
-    const solarKwhNum = parseFloat(solarKwh) || 0;
-    const exportKwhNum = parseFloat(exportKwh) || 0;
-
     const avgDailyImport = currentDay > 0 ? (importKwhNum / currentDay) : 15.0;
     const avgDailySolar = currentDay > 0 ? (solarKwhNum / currentDay) : 15.0;
     const avgDailyExport = currentDay > 0 ? (exportKwhNum / currentDay) : 2.0;
@@ -2133,7 +2130,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 
