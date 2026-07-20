@@ -204,6 +204,7 @@ class ThaiEnergyCostSensor(
             "total_outage_seconds": self.coordinator.data.get("total_outage_seconds"),
             "bess_capacity_kwh": self.coordinator.data.get("bess_capacity_kwh") or self.coordinator.config_data.get("bess_capacity_kwh", 5.0),
             "bess_capex_cost": self.coordinator.data.get("bess_capex_cost") or getattr(self.coordinator, "bess_capex_cost", 50000.0),
+            "bess_grid_charging": self.coordinator.config_data.get("bess_grid_charging", False),
             "billing_day": self.entry.data.get("billing_day") or 1,
             "current_day_of_cycle": self.coordinator.get_billing_cycle_day(dt_util.now()),
             "ft_rate": self.coordinator.config_data.get("ft_rate") or 0.3950,

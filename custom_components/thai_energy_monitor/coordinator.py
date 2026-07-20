@@ -358,6 +358,79 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         days_elapsed = (local_now.date() - cycle_start.date()).days + 1
         return min(30, max(1, days_elapsed))
 
+    def calculate_bess_daily_savings(
+        self,
+        day_date: datetime.date,
+        export_kwh: float,
+        import_kwh: float,
+        bess_capacity: float,
+        bess_efficiency: float,
+        sellback_rate: float,
+        peak_rate: float,
+        offpeak_rate: float,
+        ft_rate: float,
+        grid_charging: bool
+    ) -> float:
+        """Calculate BESS net savings for a single day based on charging strategy and TOU windows.
+
+        This considers weekends, holidays, grid top-up costs during Off-Peak, and retail
+        arbitrage differentials during Peak periods.
+        """
+        # Check if day is weekend (Saturday=5, Sunday=6)
+        is_weekend = day_date.weekday() in (5, 6)
+
+        # Determine if it's off-peak all day
+        is_offpeak_all_day = is_weekend
+        if not is_offpeak_all_day:
+            try:
+                th_holidays = holidays.Thailand()
+                is_offpeak_all_day = day_date in th_holidays
+            except Exception:
+                is_offpeak_all_day = False
+
+        vat_mult = 1.07
+
+        # Rates including Ft & VAT
+        peak_cost_kwh = (peak_rate + ft_rate) * vat_mult
+        offpeak_cost_kwh = (offpeak_rate + ft_rate) * vat_mult
+
+        if grid_charging:
+            if is_offpeak_all_day:
+                # No arbitrage benefit on off-peak days because peak_rate == offpeak_rate.
+                # Just charge from solar surplus and discharge during off-peak to save opportunity cost.
+                solar_charged = min(export_kwh, bess_capacity)
+                discharged = solar_charged * bess_efficiency
+                charge_cost = solar_charged * sellback_rate
+                benefit = discharged * offpeak_cost_kwh
+                return max(0.0, benefit - charge_cost)
+            else:
+                # Weekdays: charge to full capacity
+                solar_charged = min(export_kwh, bess_capacity)
+                grid_charged = max(0.0, bess_capacity - solar_charged)
+
+                charge_cost = (solar_charged * sellback_rate) + (grid_charged * offpeak_cost_kwh)
+                discharged = bess_capacity * bess_efficiency
+
+                # Check if household Peak import consumption limit is respected
+                # Assume peak consumption is 40% of daily import
+                peak_consumption = import_kwh * 0.40
+                actual_discharge = min(discharged, peak_consumption) if import_kwh > 0 else discharged
+
+                benefit = actual_discharge * peak_cost_kwh
+                return max(0.0, benefit - charge_cost)
+        else:
+            # Pure Solar Charging (no grid charging)
+            solar_charged = min(export_kwh, bess_capacity)
+            discharged = solar_charged * bess_efficiency
+            charge_cost = solar_charged * sellback_rate
+
+            if is_offpeak_all_day:
+                benefit = discharged * offpeak_cost_kwh
+            else:
+                benefit = discharged * peak_cost_kwh
+
+            return max(0.0, benefit - charge_cost)
+
     async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
         """Query actual daily statistics from Home Assistant recorder database for source sensors."""
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
@@ -778,18 +851,32 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Real-time BESS battery shifting simulation
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
         bess_efficiency = 0.90
-        
+        grid_charging = bool(self.config_data.get("bess_grid_charging", False))
+
         total_shifted_savings = 0.0
         daily_export_history = recorder_history.get("daily_export_kwh_history", [])
-        
+        daily_import_history = recorder_history.get("daily_import_kwh_history", [])
+        start_dt = self._get_billing_start_datetime(now)
+
         for idx in range(min(30, len(daily_export_history))):
             exp_kwh = daily_export_history[idx]
-            stored = min(exp_kwh, bess_capacity)
-            discharged = stored * bess_efficiency
-            active_retail = TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217
-            shifting_benefit = max(0.0, active_retail - sellback_rate)
-            total_shifted_savings += discharged * shifting_benefit
-            
+            imp_kwh = daily_import_history[idx] if idx < len(daily_import_history) else 0.0
+            day_date = (start_dt + timedelta(days=idx)).date()
+
+            day_savings = self.calculate_bess_daily_savings(
+                day_date=day_date,
+                export_kwh=exp_kwh,
+                import_kwh=imp_kwh,
+                bess_capacity=bess_capacity,
+                bess_efficiency=bess_efficiency,
+                sellback_rate=sellback_rate,
+                peak_rate=TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217,
+                offpeak_rate=TARIFF_1_3_2_OFFPEAK if category.startswith("1.3") else 4.4217,
+                ft_rate=ft_rate,
+                grid_charging=grid_charging
+            )
+            total_shifted_savings += day_savings
+
         self.bess_simulated_savings_thb = total_shifted_savings
 
         return {
@@ -993,12 +1080,29 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception as err:
                 _LOGGER.debug("Could not query 12-month export statistics for BESS: %s", err)
 
+        # Query hourly stats for grid import sensor over the past 365 days
+        import_stats = []
+        if self.import_sensor_id:
+            try:
+                stats_dict = await statistics_during_period(
+                    self.hass,
+                    start_time=now - timedelta(days=365),
+                    end_time=now,
+                    statistic_ids=[self.import_sensor_id],
+                    period="hour",
+                    units=None,
+                    types={"sum", "state"}
+                )
+                import_stats = stats_dict.get(self.import_sensor_id, [])
+            except Exception as err:
+                _LOGGER.debug("Could not query 12-month import statistics for BESS: %s", err)
+
         # Sort stats chronologically
         export_stats = sorted(export_stats, key=lambda x: x["start"])
+        import_stats = sorted(import_stats, key=lambda x: x["start"])
         
-        # Group hourly export by Year-Month-Day bucket to simulate daily BESS cycling
-        daily_groups = {} # "2025-08-15" -> export_kwh
-        
+        # Group hourly export by Year-Month-Day bucket
+        daily_export_groups = {} # "2025-08-15" -> export_kwh
         for i in range(len(export_stats)):
             entry = export_stats[i]
             entry_start = entry["start"]
@@ -1014,55 +1118,118 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             if kwh is None or kwh < 0.0:
                 kwh = 0.0
-                
             if kwh > 50.0:
                 kwh = 1.0 # cap anomaly
                 
-            if day_key not in daily_groups:
-                daily_groups[day_key] = 0.0
-            daily_groups[day_key] += kwh
+            if day_key not in daily_export_groups:
+                daily_export_groups[day_key] = 0.0
+            daily_export_groups[day_key] += kwh
 
-        # If no database stats are found, generate highly realistic seasonal export data
-        if not daily_groups:
+        # Group hourly import by Year-Month-Day bucket
+        daily_import_groups = {} # "2025-08-15" -> import_kwh
+        for i in range(len(import_stats)):
+            entry = import_stats[i]
+            entry_start = entry["start"]
+            local_dt = entry_start.astimezone(bkk_tz)
+            day_key = local_dt.strftime("%Y-%m-%d")
+            
+            kwh = entry.get("sum_change")
+            if kwh is None and i > 0:
+                prev_sum = import_stats[i-1].get("sum")
+                curr_sum = entry.get("sum")
+                if prev_sum is not None and curr_sum is not None:
+                    kwh = max(0.0, curr_sum - prev_sum)
+            
+            if kwh is None or kwh < 0.0:
+                kwh = 0.0
+            if kwh > 50.0:
+                kwh = 1.5 # cap anomaly
+                
+            if day_key not in daily_import_groups:
+                daily_import_groups[day_key] = 0.0
+            daily_import_groups[day_key] += kwh
+
+        # Combine all keys
+        all_day_keys = sorted(list(set(list(daily_export_groups.keys()) + list(daily_import_groups.keys()))))
+
+        # If no database stats are found, generate highly realistic seasonal export and import data
+        if not all_day_keys:
             import random
             random.seed("bess_lookback_12m")
             for d_offset in range(365, 0, -1):
                 d_date = now - timedelta(days=d_offset)
                 d_key = d_date.strftime("%Y-%m-%d")
                 month_num = d_date.month
+                
                 # Solar is higher in summer (Mar-May) and lower in monsoon (Jul-Oct)
                 season_mult = 1.4 if month_num in (3, 4, 5) else (0.70 if month_num in (8, 9, 10) else 1.0)
                 daily_export = max(0.0, random.uniform(2.0, 15.0) * season_mult)
-                daily_groups[d_key] = daily_export
+                daily_import = max(5.0, random.uniform(8.0, 25.0) * (1.3 if month_num in (4, 5, 6) else 1.0))
+                
+                daily_export_groups[d_key] = daily_export
+                daily_import_groups[d_key] = daily_import
+                all_day_keys.append(d_key)
+            
+            all_day_keys = sorted(all_day_keys)
 
         # BESS configuration parameters
         bess_capacity = float(self.config_data.get("bess_capacity_kwh") or 5.0)
         if "bess_capacity_kwh" in self.data:
-            # support dynamically updated value in coordinator data
             bess_capacity = float(self.data["bess_capacity_kwh"])
         bess_efficiency = 0.90
+        grid_charging = bool(self.config_data.get("bess_grid_charging", False))
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
         category = self.active_tariff_category
-        # Peak rate differential for shifting
+        
         peak_rate = TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217
-        shifting_differential = max(0.0, peak_rate - sellback_rate)
+        offpeak_rate = TARIFF_1_3_2_OFFPEAK if category.startswith("1.3") else 4.4217
+        ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
 
         # Aggregate daily shifting simulation results by Month
         monthly_bess_sim = {} # "2025-08" -> {"export_kwh": 0.0, "shifted_kwh": 0.0, "savings_thb": 0.0}
         
-        for day_key, export_kwh in sorted(daily_groups.items()):
+        for day_key in all_day_keys:
             month_key = day_key[:7] # extract "YYYY-MM"
             
-            # Daily shifted battery energy is capped by battery capacity
-            shifted_kwh = min(export_kwh, bess_capacity)
-            savings_thb = shifted_kwh * bess_efficiency * shifting_differential
+            export_kwh = daily_export_groups.get(day_key, 0.0)
+            import_kwh = daily_import_groups.get(day_key, 0.0)
             
+            try:
+                day_date = datetime.strptime(day_key, "%Y-%m-%d").date()
+            except Exception:
+                day_date = now.date()
+
+            # Calculate daily savings using the unified daily BESS math
+            day_savings = self.calculate_bess_daily_savings(
+                day_date=day_date,
+                export_kwh=export_kwh,
+                import_kwh=import_kwh,
+                bess_capacity=bess_capacity,
+                bess_efficiency=bess_efficiency,
+                sellback_rate=sellback_rate,
+                peak_rate=peak_rate,
+                offpeak_rate=offpeak_rate,
+                ft_rate=ft_rate,
+                grid_charging=grid_charging
+            )
+            
+            # Estimate shifted battery energy
+            if grid_charging:
+                # Weekdays we charge to full, weekends we only charge from solar surplus
+                is_weekend = day_date.weekday() in (5, 6)
+                if is_weekend:
+                    shifted_kwh = min(export_kwh, bess_capacity)
+                else:
+                    shifted_kwh = bess_capacity
+            else:
+                shifted_kwh = min(export_kwh, bess_capacity)
+                
             if month_key not in monthly_bess_sim:
                 monthly_bess_sim[month_key] = {"export_kwh": 0.0, "shifted_kwh": 0.0, "savings_thb": 0.0}
                 
             monthly_bess_sim[month_key]["export_kwh"] += export_kwh
             monthly_bess_sim[month_key]["shifted_kwh"] += shifted_kwh
-            monthly_bess_sim[month_key]["savings_thb"] += savings_thb
+            monthly_bess_sim[month_key]["savings_thb"] += day_savings
 
         # Convert to final list
         bess_lookback_data = []

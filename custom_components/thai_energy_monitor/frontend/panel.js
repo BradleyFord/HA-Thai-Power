@@ -418,6 +418,7 @@ class ThaiEnergyPanel extends HTMLElement {
       totalOutageSeconds: getAttribute('sensor.monthly_estimated_bill', 'total_outage_seconds') || 0,
       bessCapacityKwh: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capacity_kwh')) || 5.0,
       bessCapexCost: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0,
+      bessGridCharging: getAttribute('sensor.monthly_estimated_bill', 'bess_grid_charging') === true || String(getAttribute('sensor.monthly_estimated_bill', 'bess_grid_charging')).toLowerCase() === 'true',
       billingDay: parseInt(getAttribute('sensor.monthly_estimated_bill', 'billing_day')) || 1,
       meaEbillActive: getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active')).toLowerCase() === 'true',
       meaEpaymentActive: getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active')).toLowerCase() === 'true',
@@ -505,12 +506,15 @@ class ThaiEnergyPanel extends HTMLElement {
       btnSaveBess.addEventListener('click', () => {
         const capacityInput = shadow.getElementById('input-bess-capacity');
         const capexInput = shadow.getElementById('input-bess-capex');
+        const gridChargeInput = shadow.getElementById('input-bess-grid-charge');
         if (capacityInput && capexInput) {
           const cap = parseFloat(capacityInput.value) || 5.0;
           const capex = parseFloat(capexInput.value) || 50000.0;
+          const gridCharge = gridChargeInput ? gridChargeInput.checked === true : false;
           this._hass.callService('thai_energy_monitor', 'configure_bess', {
             battery_capacity: cap,
-            capex_cost: capex
+            capex_cost: capex,
+            grid_charging: gridCharge
           });
         }
       });
@@ -1582,6 +1586,11 @@ class ThaiEnergyPanel extends HTMLElement {
                 <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Battery CAPEX Capital Cost (THB)</label>
                 <input type="number" id="input-bess-capex" value="${d.bessCapexCost}" step="1000" min="0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
+              <div style="grid-column: 1 / -1; margin-top: 6px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="input-bess-grid-charge" ${d.bessGridCharging ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" /> Enable Off-Peak Grid Charging (Smart TOU Arbitrage)
+                </label>
+              </div>
             </div>
             <button class="action-btn" id="btn-save-bess" style="width: 100%; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; transition: background-color 0.2s;">
               💾 Save & Recalculate Simulation
@@ -1947,7 +1956,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 

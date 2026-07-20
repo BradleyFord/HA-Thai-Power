@@ -25,6 +25,7 @@ CONF_SOLAR_SELLBACK_RATE: Final[str] = "solar_sellback_rate"
 CONF_MEA_EBILL: Final[str] = "mea_ebill_active"
 CONF_MEA_EPAYMENT: Final[str] = "mea_epayment_active"
 CONF_BESS_CAPACITY_KWH: Final[str] = "bess_capacity_kwh"
+CONF_BESS_GRID_CHARGING: Final[str] = "bess_grid_charging"
 
 # Utility Providers
 PROVIDER_MEA: Final[str] = "MEA"

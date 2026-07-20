@@ -99,19 +99,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         {
             vol.Required("battery_capacity"): vol.Coerce(float),
             vol.Required("capex_cost"): vol.Coerce(float),
+            vol.Optional("grid_charging"): vol.Coerce(bool),
         }
     )
 
     async def async_handle_configure_bess(call: ServiceCall) -> None:
         capacity = float(call.data["battery_capacity"])
         capex = float(call.data["capex_cost"])
+        grid_charging = bool(call.data.get("grid_charging", False))
         
         # Update config entry data dictionary directly
-        new_data = {**entry.data, "bess_capacity_kwh": capacity, "bess_capex_cost": capex}
+        new_data = {
+            **entry.data,
+            "bess_capacity_kwh": capacity,
+            "bess_capex_cost": capex,
+            "bess_grid_charging": grid_charging
+        }
         hass.config_entries.async_update_entry(entry, data=new_data)
         
         # Update coordinator parameters immediately
         coordinator.config_data["bess_capacity_kwh"] = capacity
+        coordinator.config_data["bess_grid_charging"] = grid_charging
         coordinator.bess_capex_cost = capex
         
         await coordinator.async_request_refresh()
@@ -199,7 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=1.5.8",
+                    "js_url": "/thai_energy_ui/panel.js?v=1.5.9",
                 }
             },
             require_admin=False,
