@@ -15,7 +15,20 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_UTILITY_PROVIDER,
+    CONF_TARIFF_CATEGORY,
+    CONF_BILLING_DAY,
+    CONF_GRID_IMPORT_SENSOR,
+    CONF_GRID_EXPORT_SENSOR,
+    CONF_SOLAR_PROD_SENSOR,
+    CONF_FT_RATE,
+    CONF_SOLAR_SELLBACK_RATE,
+    CONF_MEA_EBILL,
+    CONF_MEA_EPAYMENT,
+    CONF_BESS_CAPACITY_KWH,
+)
 from .coordinator import ThaiEnergyDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +112,57 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=SERVICE_SCHEMA_CONFIGURE_BESS,
         )
 
+    # Register custom service to configure all settings from frontend settings page
+    SERVICE_CONFIGURE_SETTINGS = "configure_settings"
+    SERVICE_SCHEMA_CONFIGURE_SETTINGS = vol.Schema(
+        {
+            vol.Required(CONF_UTILITY_PROVIDER): cv.string,
+            vol.Required(CONF_TARIFF_CATEGORY): cv.string,
+            vol.Required(CONF_BILLING_DAY): vol.Coerce(int),
+            vol.Required(CONF_GRID_IMPORT_SENSOR): cv.string,
+            vol.Required(CONF_GRID_EXPORT_SENSOR): cv.string,
+            vol.Required(CONF_SOLAR_PROD_SENSOR): cv.string,
+            vol.Required(CONF_FT_RATE): vol.Coerce(float),
+            vol.Required(CONF_SOLAR_SELLBACK_RATE): vol.Coerce(float),
+            vol.Required(CONF_MEA_EBILL): vol.Coerce(bool),
+            vol.Required(CONF_MEA_EPAYMENT): vol.Coerce(bool),
+        }
+    )
+
+    async def async_handle_configure_settings(call: ServiceCall) -> None:
+        new_data = {
+            CONF_UTILITY_PROVIDER: call.data[CONF_UTILITY_PROVIDER],
+            CONF_TARIFF_CATEGORY: call.data[CONF_TARIFF_CATEGORY],
+            CONF_BILLING_DAY: int(call.data[CONF_BILLING_DAY]),
+            CONF_GRID_IMPORT_SENSOR: call.data[CONF_GRID_IMPORT_SENSOR],
+            CONF_GRID_EXPORT_SENSOR: call.data[CONF_GRID_EXPORT_SENSOR],
+            CONF_SOLAR_PROD_SENSOR: call.data[CONF_SOLAR_PROD_SENSOR],
+            CONF_FT_RATE: float(call.data[CONF_FT_RATE]),
+            CONF_SOLAR_SELLBACK_RATE: float(call.data[CONF_SOLAR_SELLBACK_RATE]),
+            CONF_MEA_EBILL: bool(call.data[CONF_MEA_EBILL]),
+            CONF_MEA_EPAYMENT: bool(call.data[CONF_MEA_EPAYMENT]),
+        }
+        
+        # Preserve existing BESS values if present
+        if "bess_capacity_kwh" in entry.data:
+            new_data["bess_capacity_kwh"] = entry.data["bess_capacity_kwh"]
+        if "bess_capex_cost" in entry.data:
+            new_data["bess_capex_cost"] = entry.data["bess_capex_cost"]
+            
+        hass.config_entries.async_update_entry(entry, data=new_data)
+        coordinator.config_data.update(new_data)
+        
+        # Cleanly reload config entry so everything starts fresh immediately!
+        await hass.config_entries.async_reload(entry.entry_id)
+
+    if not hass.services.has_service(DOMAIN, SERVICE_CONFIGURE_SETTINGS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CONFIGURE_SETTINGS,
+            async_handle_configure_settings,
+            schema=SERVICE_SCHEMA_CONFIGURE_SETTINGS,
+        )
+
     # --- Modern Asynchronous Frontend Registration ---
     frontend_path = hass.config.path("custom_components/thai_energy_monitor/frontend")
 
@@ -150,6 +214,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK)
             try:
                 hass.services.async_remove(DOMAIN, "configure_bess")
+                hass.services.async_remove(DOMAIN, "configure_settings")
             except Exception:
                 pass
 

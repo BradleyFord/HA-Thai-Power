@@ -379,6 +379,9 @@ class ThaiEnergyPanel extends HTMLElement {
       totalOutageSeconds: getAttribute('sensor.monthly_estimated_bill', 'total_outage_seconds') || 0,
       bessCapacityKwh: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capacity_kwh')) || 5.0,
       bessCapexCost: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0,
+      billingDay: parseInt(getAttribute('sensor.monthly_estimated_bill', 'billing_day')) || 1,
+      meaEbillActive: getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active')).toLowerCase() === 'true',
+      meaEpaymentActive: getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active')).toLowerCase() === 'true',
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: solcastForecastToday,
       solcastPowerNow: solcastPowerNow,
@@ -461,6 +464,35 @@ class ThaiEnergyPanel extends HTMLElement {
             capex_cost: capex
           });
         }
+      });
+    }
+
+    const btnSaveSettings = shadow.getElementById('btn-save-settings');
+    if (btnSaveSettings) {
+      btnSaveSettings.addEventListener('click', () => {
+        const gridImport = shadow.getElementById('setting-grid-import')?.value || '';
+        const gridExport = shadow.getElementById('setting-grid-export')?.value || '';
+        const solarProd = shadow.getElementById('setting-solar-prod')?.value || '';
+        const utilityProvider = shadow.getElementById('setting-utility-provider')?.value || 'MEA';
+        const tariffCategory = shadow.getElementById('setting-tariff-category')?.value || '1.2';
+        const billingDay = parseInt(shadow.getElementById('setting-billing-day')?.value || '1', 10);
+        const ftRate = parseFloat(shadow.getElementById('setting-ft-rate')?.value || '0.3950');
+        const sellbackRate = parseFloat(shadow.getElementById('setting-sellback-rate')?.value || '2.20');
+        const meaEbill = shadow.getElementById('setting-mea-ebill')?.checked === true;
+        const meaEpayment = shadow.getElementById('setting-mea-epayment')?.checked === true;
+
+        this._hass.callService('thai_energy_monitor', 'configure_settings', {
+          utility_provider: utilityProvider,
+          tariff_category: tariffCategory,
+          billing_day: billingDay,
+          grid_import_sensor: gridImport,
+          grid_export_sensor: gridExport,
+          solar_prod_sensor: solarProd,
+          ft_rate: ftRate,
+          solar_sellback_rate: sellbackRate,
+          mea_ebill_active: meaEbill,
+          mea_epayment_active: meaEpayment
+        });
       });
     }
   }
@@ -1036,6 +1068,9 @@ class ThaiEnergyPanel extends HTMLElement {
         </button>
         <button class="tab-btn ${this._activeTab === 'outages' ? 'active' : ''}" data-tab="outages">
           Grid Outages
+        </button>
+        <button class="tab-btn ${this._activeTab === 'settings' ? 'active' : ''}" data-tab="settings" style="margin-left: auto;">
+          ⚙️ Settings
         </button>
       </div>
 
@@ -1735,8 +1770,85 @@ class ThaiEnergyPanel extends HTMLElement {
         </div>
       ` : ''}
 
+      <!-- Tab 7: Configuration Settings -->
+      ${this._activeTab === 'settings' ? `
+        <div class="grid">
+          <div class="card">
+            <h2>Grid & Solar Sensors Configuration</h2>
+            <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Grid Energy Import Sensor ID</label>
+                <input type="text" id="setting-grid-import" value="${d.importSensorId}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Grid Energy Export Sensor ID (Optional)</label>
+                <input type="text" id="setting-grid-export" value="${d.exportSensorId}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Solar Yield Production Sensor ID</label>
+                <input type="text" id="setting-solar-prod" value="${d.solarSensorId}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Utility & Tariff Structure</h2>
+            <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Electricity Provider</label>
+                <select id="setting-utility-provider" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none; cursor: pointer;">
+                  <option value="MEA" ${d.provider === 'MEA' ? 'selected' : ''}>MEA (Metropolitan Electricity Authority)</option>
+                  <option value="PEA" ${d.provider === 'PEA' ? 'selected' : ''}>PEA (Provincial Electricity Authority)</option>
+                </select>
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tariff Classification Category</label>
+                <select id="setting-tariff-category" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none; cursor: pointer;">
+                  <option value="1.1" ${d.tariffCategory === '1.1' ? 'selected' : ''}>Tariff 1.1 (Progressive &le; 150 kWh)</option>
+                  <option value="1.2" ${d.tariffCategory === '1.2' ? 'selected' : ''}>Tariff 1.2 (Progressive &gt; 150 kWh)</option>
+                  <option value="1.3.1" ${d.tariffCategory === '1.3.1' ? 'selected' : ''}>Tariff 1.3.1 (TOU 12-24 kV)</option>
+                  <option value="1.3.2" ${d.tariffCategory === '1.3.2' ? 'selected' : ''}>Tariff 1.3.2 (TOU Below 12 kV)</option>
+                </select>
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Billing Cycle Start Day</label>
+                <input type="number" id="setting-billing-day" value="${d.billingDay}" min="1" max="31" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Financial & Subscription Options</h2>
+            <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Ft Charge rate (THB / kWh)</label>
+                <input type="number" id="setting-ft-rate" value="${d.ftRate}" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Solar Buy-back sellback rate (THB / kWh)</label>
+                <input type="number" id="setting-sellback-rate" value="${d.sellbackRate}" step="0.01" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer;">
+                  <input type="checkbox" id="setting-mea-ebill" ${d.meaEbillActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> Active MEA e-Bill
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer;">
+                  <input type="checkbox" id="setting-mea-epayment" ${d.meaEpaymentActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> Active MEA e-Payment
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="card full-width" style="text-align: right; padding-top: 10px; border: none; background-color: transparent;">
+            <button class="action-btn" id="btn-save-settings" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background-color: var(--success-color, #4caf50); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.2s;">
+              💾 Save Configuration & Reload Integration
+            </button>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.4.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 

@@ -203,6 +203,11 @@ class ThaiEnergyCostSensor(
             "total_outage_seconds": self.coordinator.data.get("total_outage_seconds"),
             "bess_capacity_kwh": self.coordinator.data.get("bess_capacity_kwh") or self.coordinator.config_data.get("bess_capacity_kwh", 5.0),
             "bess_capex_cost": self.coordinator.data.get("bess_capex_cost") or getattr(self.coordinator, "bess_capex_cost", 50000.0),
+            "billing_day": self.entry.data.get("billing_day") or 1,
+            "ft_rate": self.coordinator.config_data.get("ft_rate") or 0.3950,
+            "solar_sellback_rate": self.coordinator.config_data.get("solar_sellback_rate") or 2.20,
+            "mea_ebill_active": self.entry.data.get("mea_ebill_active") or False,
+            "mea_epayment_active": self.entry.data.get("mea_epayment_active") or False,
         }
 
     @property
