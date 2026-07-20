@@ -212,7 +212,7 @@ class ThaiEnergyPanel extends HTMLElement {
     }
 
     const today = new Date();
-    const currentDay = Math.min(30, Math.max(1, today.getDate()));
+    const currentDay = parseInt(getAttribute('sensor.monthly_estimated_bill', 'current_day_of_cycle')) || Math.min(30, Math.max(1, today.getDate()));
     const totalBaseNum = parseFloat(baseCost) || 0;
     const totalFtNum = parseFloat(ftCharge) || 0;
     const totalServiceNum = parseFloat(serviceCharge) || 38.22;
@@ -579,6 +579,7 @@ class ThaiEnergyPanel extends HTMLElement {
     setText('val-self-consumed-volume', `${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)`);
     setText('val-grid-export-volume', `${d.exportKwh} kWh`);
     setText('val-lifetime-benefit', `฿${d.lifetimeBenefit}`);
+    setText('val-cycle-day', `Day ${d.currentDayOfCycle} / 30`);
 
     // Dynamic updates for Solcast Card
     setHtml('val-solcast-today-main', `${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span>`);
@@ -1369,7 +1370,7 @@ class ThaiEnergyPanel extends HTMLElement {
               <div class="debug-section">
                 <h4>Temporal Calibration</h4>
                 <div class="row"><span class="label">Billing Reset Day</span><span class="val">Day ${d.billingResetDay} of Month</span></div>
-                <div class="row"><span class="label">Current Day of Cycle</span><span class="val">Day ${d.currentDayOfCycle} / 30</span></div>
+                <div class="row"><span class="label">Current Day of Cycle</span><span class="val" id="val-cycle-day">Day ${d.currentDayOfCycle} / 30</span></div>
                 <div class="row"><span class="label">Active Window</span><span class="val highlight">${d.touStatus}</span></div>
               </div>
 
@@ -1946,7 +1947,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 

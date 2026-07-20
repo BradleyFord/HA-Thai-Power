@@ -334,6 +334,30 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.phantom_tou_offpeak_kwh = 0.0
             self.last_reset_date = today
 
+    def get_billing_cycle_day(self, now_dt: datetime) -> int:
+        """Calculate the current day of the monthly billing cycle (1-30)."""
+        try:
+            billing_day = int(self.config_data.get(CONF_BILLING_DAY, 1))
+        except (ValueError, TypeError):
+            billing_day = 1
+
+        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+        try:
+            local_now = now_dt.astimezone(bkk_tz)
+        except Exception:
+            local_now = now_dt
+
+        if local_now.day >= billing_day:
+            cycle_start = local_now.replace(day=billing_day, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            first_of_this_month = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            last_day_of_prev_month = first_of_this_month - timedelta(days=1)
+            target_day = min(billing_day, last_day_of_prev_month.day)
+            cycle_start = last_day_of_prev_month.replace(day=target_day, hour=0, minute=0, second=0, microsecond=0)
+
+        days_elapsed = (local_now.date() - cycle_start.date()).days + 1
+        return min(30, max(1, days_elapsed))
+
     async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
         """Query actual daily statistics from Home Assistant recorder database for source sensors."""
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
@@ -342,7 +366,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:
             bkk_now = now
 
-        current_day = min(30, max(1, bkk_now.day))
+        current_day = self.get_billing_cycle_day(now)
 
         import_avg = max(0.1, self.monthly_import_kwh / current_day)
         solar_avg = max(0.1, self.monthly_solar_kwh / current_day)
@@ -576,7 +600,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:
             bkk_now = now
         
-        current_day = min(30, max(1, bkk_now.day))
+        current_day = self.get_billing_cycle_day(now)
 
         # --- RIEMANN INTEGRATION ENGINE FOR POWER SENSORS (kW/W) ---
         is_import_power = self._is_power_sensor(self.import_sensor_id, import_state)
