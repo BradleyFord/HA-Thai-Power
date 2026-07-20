@@ -80,12 +80,13 @@ class ThaiEnergyPanel extends HTMLElement {
     return false;
   }
 
-  _formatNum(val, maxDec = 2) {
+  _formatNum(val, maxDec = 2, minDec = null) {
     if (val === null || val === undefined || val === '') return '0.00';
     const num = parseFloat(val);
     if (isNaN(num)) return val;
+    const minF = minDec !== null ? minDec : (maxDec === 2 ? 2 : 0);
     return num.toLocaleString('en-US', {
-      minimumFractionDigits: 0,
+      minimumFractionDigits: minF,
       maximumFractionDigits: maxDec
     });
   }
@@ -239,12 +240,23 @@ class ThaiEnergyPanel extends HTMLElement {
     const peakRate = tariffCategory === '1.3.1' ? 5.2636 : 5.7982;
     const offpeakRate = tariffCategory === '1.3.1' ? 2.6295 : 2.6369;
 
+    const importKwhNum = parseFloat(importKwh) || 0;
+    const solarKwhNum = parseFloat(solarKwh) || 0;
+    const exportKwhNum = parseFloat(exportKwh) || 0;
+
+    const avgDailyImport = currentDay > 0 ? (importKwhNum / currentDay) : 15.0;
+    const avgDailySolar = currentDay > 0 ? (solarKwhNum / currentDay) : 15.0;
+    const avgDailyExport = currentDay > 0 ? (exportKwhNum / currentDay) : 2.0;
+
     // Generate non-linear cumulative monthly bill progression with 3 Base tiers or TOU Peak/Off-Peak split
     let runningKwh = 0.0;
     const dailyKwhList = [];
     for (let day = 1; day <= 30; day++) {
       const isPastOrToday = day <= currentDay;
-      const dayKwh = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 15.0;
+      let dayKwh = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 0;
+      if (!dayKwh || dayKwh < 0.1) {
+        dayKwh = avgDailyImport;
+      }
       runningKwh += dayKwh;
       dailyKwhList.push({ day, runningKwh, isPastOrToday });
     }
@@ -299,9 +311,15 @@ class ThaiEnergyPanel extends HTMLElement {
       const bar = monthlyDailyBars[i];
       const prevBar = i > 0 ? monthlyDailyBars[i - 1] : { tier1: 0, tier2: 0, tier3: 0, ft: 0, peak: 0, offpeak: 0 };
       
-      const impKwh = pyImportHistory[i] !== undefined ? parseFloat(pyImportHistory[i]) : 15.0;
-      const solKwh = pySolarHistory[i] !== undefined ? parseFloat(pySolarHistory[i]) : 15.0;
-      const expKwh = pyExportHistory[i] !== undefined ? parseFloat(pyExportHistory[i]) : 4.0;
+      let impKwh = pyImportHistory[i] !== undefined ? parseFloat(pyImportHistory[i]) : 0;
+      if (!impKwh || impKwh < 0.1) impKwh = avgDailyImport;
+
+      let solKwh = pySolarHistory[i] !== undefined ? parseFloat(pySolarHistory[i]) : 0;
+      if (!solKwh || solKwh < 0.1) solKwh = avgDailySolar;
+
+      let expKwh = pyExportHistory[i] !== undefined ? parseFloat(pyExportHistory[i]) : 0;
+      if (!expKwh || expKwh < 0.01) expKwh = avgDailyExport;
+
       const selfKwh = Math.max(0, solKwh - expKwh);
 
       // Compute Daily cost of import = change in Base charge + change in Ft charge
@@ -1477,18 +1495,24 @@ class ThaiEnergyPanel extends HTMLElement {
                     <strong>Solar Active Power</strong>
                     <div class="row" style="margin-top: 4px;"><span class="label">sensor.inverter_active_power</span><span class="val highlight">${this._formatNum(d.inverterPower)} ${d.inverterPowerUnit}</span></div>
                   </div>
-                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                    <strong>Default Grid Import</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${this._formatNum(d.defaultGridImport)} kWh</span></div>
-                  </div>
-                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                    <strong>Default Solar Prod</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${this._formatNum(d.defaultSolarProd)} kWh</span></div>
-                  </div>
-                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                    <strong>Default Grid Export</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${this._formatNum(d.defaultGridExport)} kWh</span></div>
-                  </div>
+                  ${d.defaultGridImport > 0 ? `
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Default Grid Import</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${this._formatNum(d.defaultGridImport)} kWh</span></div>
+                    </div>
+                  ` : ''}
+                  ${d.defaultSolarProd > 0 ? `
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Default Solar Prod</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${this._formatNum(d.defaultSolarProd)} kWh</span></div>
+                    </div>
+                  ` : ''}
+                  ${d.defaultGridExport > 0 ? `
+                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                      <strong>Default Grid Export</strong>
+                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${this._formatNum(d.defaultGridExport)} kWh</span></div>
+                    </div>
+                  ` : ''}
                 </div>
               </div>
             </div>
@@ -2091,7 +2115,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.7.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.7.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 
