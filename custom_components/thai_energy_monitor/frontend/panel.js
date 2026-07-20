@@ -1005,7 +1005,10 @@ class ThaiEnergyPanel extends HTMLElement {
           Billing Overview
         </button>
         <button class="tab-btn ${this._activeTab === 'solar' ? 'active' : ''}" data-tab="solar">
-          Solar ROI & BESS
+          Solar ROI
+        </button>
+        <button class="tab-btn ${this._activeTab === 'bess' ? 'active' : ''}" data-tab="bess">
+          BESS Simulation
         </button>
         <button class="tab-btn ${this._activeTab === 'predictive' ? 'active' : ''}" data-tab="predictive">
           Tariff Optimizer
@@ -1347,28 +1350,24 @@ class ThaiEnergyPanel extends HTMLElement {
           </div>
 
           <div class="card">
-            <h2>BESS Battery Storage Simulation</h2>
-            <div class="metric-main highlight">฿${d.bessSavings}</div>
+            <h2>Solcast PV Forecast Integration</h2>
+            <div class="metric-main highlight" style="color: var(--warning-color, #ff9800);">${parseFloat(d.solcastForecastToday).toFixed(1)} <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Simulated Shift Savings</span>
-                <span class="val highlight">฿${d.bessSavings}</span>
-              </div>
-              <div class="row">
-                <span class="label">Simulation Strategy</span>
-                <span class="val">Solar Storage &rarr; Peak Discharge</span>
-              </div>
-              <div class="row">
-                <span class="label">Solcast PV Forecast Status</span>
+                <span class="label">Solcast Integration Status</span>
                 <span class="val ${d.solcastEntityFound ? 'saving' : ''}">${d.solcastEntityFound ? 'Solcast Integrated' : 'Simulated Solcast Baseline'}</span>
               </div>
               <div class="row">
-                <span class="label">Solcast Forecast Generation Today</span>
+                <span class="label">Estimated Generation Today</span>
                 <span class="val">${d.solcastForecastToday} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Solcast Forecast Remaining Today</span>
+                <span class="label">Estimated Remaining Today</span>
                 <span class="val">${d.solcastForecastRemaining} kWh</span>
+              </div>
+              <div class="row">
+                <span class="label">Current Estimated Power Output</span>
+                <span class="val">${d.solcastPowerNow} kW</span>
               </div>
             </div>
           </div>
@@ -1444,7 +1443,49 @@ class ThaiEnergyPanel extends HTMLElement {
         </div>
       ` : ''}
 
-      <!-- Tab 3: Detailed Tariff Optimizer -->
+      <!-- Tab 3: BESS Simulation -->
+      ${this._activeTab === 'bess' ? `
+        <div class="grid">
+          <div class="card">
+            <h2>BESS Battery Storage Simulation</h2>
+            <div class="metric-main highlight">฿${d.bessSavings}</div>
+            <div class="table-rows">
+              <div class="row">
+                <span class="label">Simulated Shift Savings</span>
+                <span class="val highlight">฿${d.bessSavings}</span>
+              </div>
+              <div class="row">
+                <span class="label">Simulation Strategy</span>
+                <span class="val">Solar Storage &rarr; Peak Discharge</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>BESS Simulation Configuration</h2>
+            <div class="table-rows">
+              <div class="row">
+                <span class="label">Configured Battery Capacity</span>
+                <span class="val">5.0 kWh</span>
+              </div>
+              <div class="row">
+                <span class="label">Battery Storage Efficiency</span>
+                <span class="val">90.0 %</span>
+              </div>
+              <div class="row">
+                <span class="label">Discharge Time Window</span>
+                <span class="val">Peak hours (09:00 - 22:00)</span>
+              </div>
+              <div class="row">
+                <span class="label">Charge Time Window</span>
+                <span class="val">Off-peak hours or Solar surplus</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Tab 4: Detailed Tariff Optimizer -->
       ${this._activeTab === 'predictive' ? `
         <div class="grid">
           <div class="card full-width">
@@ -1662,7 +1703,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.4.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.4.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
