@@ -391,12 +391,12 @@ class ThaiEnergyPanel extends HTMLElement {
       importSensorId: importSensorId,
       exportSensorId: exportSensorId,
       solarSensorId: solarSensorId,
-      importBaseline: importBaseline !== null ? parseFloat(importBaseline).toFixed(3) : 'Not Initialized',
-      solarBaseline: solarBaseline !== null ? parseFloat(solarBaseline).toFixed(3) : 'Not Initialized',
-      exportBaseline: exportBaseline !== null ? parseFloat(exportBaseline).toFixed(3) : 'Not Initialized',
-      importCurrentReading: importCurrentReading,
-      solarCurrentReading: solarCurrentReading,
-      exportCurrentReading: exportCurrentReading,
+      importBaseline: importBaseline !== null ? parseFloat(importBaseline).toFixed(2) : 'Not Initialized',
+      solarBaseline: solarBaseline !== null ? parseFloat(solarBaseline).toFixed(2) : 'Not Initialized',
+      exportBaseline: exportBaseline !== null ? parseFloat(exportBaseline).toFixed(2) : 'Not Initialized',
+      importCurrentReading: importCurrentReading !== null && !isNaN(parseFloat(importCurrentReading)) ? parseFloat(importCurrentReading).toFixed(2) : importCurrentReading,
+      solarCurrentReading: solarCurrentReading !== null && !isNaN(parseFloat(solarCurrentReading)) ? parseFloat(solarCurrentReading).toFixed(2) : solarCurrentReading,
+      exportCurrentReading: exportCurrentReading !== null && !isNaN(parseFloat(exportCurrentReading)) ? parseFloat(exportCurrentReading).toFixed(2) : exportCurrentReading,
       importUnit: importUnit,
       solarUnit: solarUnit,
       exportUnit: exportUnit,
@@ -1017,7 +1017,7 @@ class ThaiEnergyPanel extends HTMLElement {
 
         .debug-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
           gap: 16px;
           font-size: 13px;
         }
@@ -1311,7 +1311,7 @@ class ThaiEnergyPanel extends HTMLElement {
                 <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.importSensorId}</span></div>
                 <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} ${d.importUnit}</span></div>
                 <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.importBaseline} kWh</span></div>
-                <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${d.importKwh} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${parseFloat(d.importKwh || 0).toFixed(2)} kWh</span></div>
               </div>
 
               <div class="debug-section">
@@ -1319,7 +1319,7 @@ class ThaiEnergyPanel extends HTMLElement {
                 <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.solarSensorId}</span></div>
                 <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} ${d.solarUnit}</span></div>
                 <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.solarBaseline} kWh</span></div>
-                <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${d.solarKwh} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${parseFloat(d.solarKwh || 0).toFixed(2)} kWh</span></div>
               </div>
 
               <div class="debug-section">
@@ -1327,7 +1327,7 @@ class ThaiEnergyPanel extends HTMLElement {
                 <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.exportSensorId}</span></div>
                 <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} ${d.exportUnit}</span></div>
                 <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.exportBaseline} kWh</span></div>
-                <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${d.exportKwh} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${parseFloat(d.exportKwh || 0).toFixed(2)} kWh</span></div>
               </div>
 
               <div class="debug-section">
@@ -1848,7 +1848,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
