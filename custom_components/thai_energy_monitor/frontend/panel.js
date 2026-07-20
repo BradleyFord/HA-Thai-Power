@@ -1144,6 +1144,7 @@ class ThaiEnergyPanel extends HTMLElement {
         }
 
         .debug-panel {
+          grid-column: 1 / -1;
           margin-top: 24px;
           background-color: rgba(244, 67, 54, 0.06);
           border: 1px solid var(--error-color, #f44336);
@@ -1424,25 +1425,25 @@ class ThaiEnergyPanel extends HTMLElement {
               <div class="debug-section">
                 <h4>Grid Energy Import</h4>
                 <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.importSensorId}</span></div>
-                <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} ${d.importUnit}</span></div>
-                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.importBaseline} kWh</span></div>
-                <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${parseFloat(d.importKwh || 0).toFixed(2)} kWh</span></div>
+                <div class="row"><span class="label">Current Reading</span><span class="val">${this._formatNum(d.importCurrentReading)} ${d.importUnit}</span></div>
+                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${this._formatNum(d.importBaseline)} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${this._formatNum(d.importKwh)} kWh</span></div>
               </div>
 
               <div class="debug-section">
                 <h4>Solar Production</h4>
                 <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.solarSensorId}</span></div>
-                <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} ${d.solarUnit}</span></div>
-                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.solarBaseline} kWh</span></div>
-                <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${parseFloat(d.solarKwh || 0).toFixed(2)} kWh</span></div>
+                <div class="row"><span class="label">Current Reading</span><span class="val">${this._formatNum(d.solarCurrentReading)} ${d.solarUnit}</span></div>
+                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${this._formatNum(d.solarBaseline)} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${this._formatNum(d.solarKwh)} kWh</span></div>
               </div>
 
               <div class="debug-section">
                 <h4>Grid Energy Export</h4>
                 <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.exportSensorId}</span></div>
-                <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} ${d.exportUnit}</span></div>
-                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.exportBaseline} kWh</span></div>
-                <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${parseFloat(d.exportKwh || 0).toFixed(2)} kWh</span></div>
+                <div class="row"><span class="label">Current Reading</span><span class="val">${this._formatNum(d.exportCurrentReading)} ${d.exportUnit}</span></div>
+                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${this._formatNum(d.exportBaseline)} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${this._formatNum(d.exportKwh)} kWh</span></div>
               </div>
 
               <div class="debug-section">
@@ -1458,23 +1459,23 @@ class ThaiEnergyPanel extends HTMLElement {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 13px;">
                   <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
                     <strong>Grid Power Load</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.pm2230_total_active_power</span><span class="val highlight">${d.pm2230Power} ${d.pm2230PowerUnit}</span></div>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.pm2230_total_active_power</span><span class="val highlight">${this._formatNum(d.pm2230Power)} ${d.pm2230PowerUnit}</span></div>
                   </div>
                   <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
                     <strong>Solar Active Power</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.inverter_active_power</span><span class="val highlight">${d.inverterPower} ${d.inverterPowerUnit}</span></div>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.inverter_active_power</span><span class="val highlight">${this._formatNum(d.inverterPower)} ${d.inverterPowerUnit}</span></div>
                   </div>
                   <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
                     <strong>Default Grid Import</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${d.defaultGridImport} kWh</span></div>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${this._formatNum(d.defaultGridImport)} kWh</span></div>
                   </div>
                   <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
                     <strong>Default Solar Prod</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${d.defaultSolarProd} kWh</span></div>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${this._formatNum(d.defaultSolarProd)} kWh</span></div>
                   </div>
                   <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
                     <strong>Default Grid Export</strong>
-                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${d.defaultGridExport} kWh</span></div>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${this._formatNum(d.defaultGridExport)} kWh</span></div>
                   </div>
                 </div>
               </div>
@@ -2078,7 +2079,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.7.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.7.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 
