@@ -214,6 +214,42 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return False
 
+    @property
+    def active_tiered_1_2_tiers(self) -> list[tuple[float, float, float]]:
+        """Return active Tiered 1.2 rate tiers, using custom overrides if configured."""
+        t1 = float(self.config_data.get("custom_tier1_rate") or 3.2484)
+        t2 = float(self.config_data.get("custom_tier2_rate") or 4.2233)
+        t3 = float(self.config_data.get("custom_tier3_rate") or 4.4217)
+        return [(0.0, 150.0, t1), (150.0, 400.0, t2), (400.0, float("inf"), t3)]
+
+    @property
+    def active_tou_peak_rate(self) -> float:
+        """Return active TOU Peak rate, using custom override if configured."""
+        category = self.active_tariff_category
+        default_peak = TARIFF_1_3_1_PEAK if category == TARIFF_1_3_1 else TARIFF_1_3_2_PEAK
+        if self.config_data.get("custom_peak_rate") is not None:
+            try:
+                val = float(self.config_data["custom_peak_rate"])
+                if val > 0:
+                    return val
+            except (ValueError, TypeError):
+                pass
+        return default_peak
+
+    @property
+    def active_tou_offpeak_rate(self) -> float:
+        """Return active TOU Off-Peak rate, using custom override if configured."""
+        category = self.active_tariff_category
+        default_offpeak = TARIFF_1_3_1_OFFPEAK if category == TARIFF_1_3_1 else TARIFF_1_3_2_OFFPEAK
+        if self.config_data.get("custom_offpeak_rate") is not None:
+            try:
+                val = float(self.config_data["custom_offpeak_rate"])
+                if val > 0:
+                    return val
+            except (ValueError, TypeError):
+                pass
+        return default_offpeak
+
     def calculate_tiered_cost(
         self, energy_kwh: float, tiers: list[tuple[float, float, float]]
     ) -> float:
@@ -236,18 +272,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return TARIFF_1_1_TIERS[-1][2]
 
         elif category == TARIFF_1_2:
-            for lower, upper, rate in TARIFF_1_2_TIERS:
+            active_tiers = self.active_tiered_1_2_tiers
+            for lower, upper, rate in active_tiers:
                 if lower <= current_kwh < upper:
                     return rate
-            return TARIFF_1_2_TIERS[-1][2]
+            return active_tiers[-1][2]
 
-        elif category == TARIFF_1_3_1:
-            return TARIFF_1_3_1_OFFPEAK if is_offpeak else TARIFF_1_3_1_PEAK
+        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            return self.active_tou_offpeak_rate if is_offpeak else self.active_tou_peak_rate
 
-        elif category == TARIFF_1_3_2:
-            return TARIFF_1_3_2_OFFPEAK if is_offpeak else TARIFF_1_3_2_PEAK
-
-        return TARIFF_1_2_TIERS[0][2]
+        return self.active_tiered_1_2_tiers[0][2]
 
     def _get_billing_start_datetime(self, now: datetime) -> datetime:
         """Calculate exact datetime for the start of the current billing cycle."""
@@ -821,18 +855,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         elif category == TARIFF_1_2:
             service_charge = TARIFF_1_2_SERVICE_CHARGE
-            base_cost = self.calculate_tiered_cost(projected_monthly_import, TARIFF_1_2_TIERS)
+            base_cost = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
 
         elif category == TARIFF_1_3_1:
             service_charge = TARIFF_1_3_1_SERVICE_CHARGE
-            base_cost = ((projected_monthly_import * 0.4) * TARIFF_1_3_1_PEAK) + (
-                (projected_monthly_import * 0.6) * TARIFF_1_3_1_OFFPEAK
+            base_cost = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
+                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
             )
 
         elif category == TARIFF_1_3_2:
             service_charge = TARIFF_1_3_2_SERVICE_CHARGE
-            base_cost = ((projected_monthly_import * 0.4) * TARIFF_1_3_2_PEAK) + (
-                (projected_monthly_import * 0.6) * TARIFF_1_3_2_OFFPEAK
+            base_cost = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
+                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
             )
 
         subtotal = base_cost + service_charge + monthly_ft_charge
@@ -840,14 +874,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         monthly_estimated_bill = subtotal + vat_amount
 
         if category in (TARIFF_1_1, TARIFF_1_2):
-            phantom_base = ((projected_monthly_import * 0.4) * TARIFF_1_3_2_PEAK) + (
-                (projected_monthly_import * 0.6) * TARIFF_1_3_2_OFFPEAK
+            phantom_base = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
+                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
             )
             phantom_subtotal = phantom_base + TARIFF_1_3_2_SERVICE_CHARGE + monthly_ft_charge
             phantom_total_bill = phantom_subtotal * (1 + VAT_RATE)
             opposing_tariff_name = "TOU 1.3.2"
         else:
-            phantom_base = self.calculate_tiered_cost(projected_monthly_import, TARIFF_1_2_TIERS)
+            phantom_base = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
             phantom_subtotal = phantom_base + TARIFF_1_2_SERVICE_CHARGE + monthly_ft_charge
             phantom_total_bill = phantom_subtotal * (1 + VAT_RATE)
             opposing_tariff_name = "Tiered 1.2"
@@ -885,8 +919,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 bess_capacity=bess_capacity,
                 bess_efficiency=bess_efficiency,
                 sellback_rate=sellback_rate,
-                peak_rate=TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217,
-                offpeak_rate=TARIFF_1_3_2_OFFPEAK if category.startswith("1.3") else 4.4217,
+                peak_rate=self.active_tou_peak_rate,
+                offpeak_rate=self.active_tou_offpeak_rate,
                 ft_rate=ft_rate,
                 grid_charging=grid_charging,
                 tariff_model=tariff_model
@@ -1198,8 +1232,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
         category = self.active_tariff_category
         
-        peak_rate = TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217
-        offpeak_rate = TARIFF_1_3_2_OFFPEAK if category.startswith("1.3") else 4.4217
+        peak_rate = self.active_tou_peak_rate
+        offpeak_rate = self.active_tou_offpeak_rate
         ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
 
         # Aggregate daily shifting simulation results by Month

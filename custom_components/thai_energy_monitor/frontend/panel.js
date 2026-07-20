@@ -431,6 +431,12 @@ class ThaiEnergyPanel extends HTMLElement {
       solcastPowerNowUnit: solcastPowerUnit,
       solcastForecastRemaining: parseFloat(solcastForecastRemaining || 0).toFixed(2),
 
+      customPeakRate: getAttribute('sensor.monthly_estimated_bill', 'custom_peak_rate') || '',
+      customOffpeakRate: getAttribute('sensor.monthly_estimated_bill', 'custom_offpeak_rate') || '',
+      customTier1Rate: getAttribute('sensor.monthly_estimated_bill', 'custom_tier1_rate') || '',
+      customTier2Rate: getAttribute('sensor.monthly_estimated_bill', 'custom_tier2_rate') || '',
+      customTier3Rate: getAttribute('sensor.monthly_estimated_bill', 'custom_tier3_rate') || '',
+
       // Debug Diagnostic Properties
       importSensorId: importSensorId,
       exportSensorId: exportSensorId,
@@ -562,12 +568,13 @@ class ThaiEnergyPanel extends HTMLElement {
         const meaEbill = shadow.getElementById('setting-mea-ebill')?.checked === true;
         const meaEpayment = shadow.getElementById('setting-mea-epayment')?.checked === true;
 
-        const origHtml = btnSaveSettings.innerHTML;
-        btnSaveSettings.innerHTML = '⏳ Saving Configuration...';
-        btnSaveSettings.style.backgroundColor = 'var(--warning-color, #ff9800)';
-        btnSaveSettings.disabled = true;
+        const customPeakVal = shadow.getElementById('setting-custom-peak-rate')?.value;
+        const customOffpeakVal = shadow.getElementById('setting-custom-offpeak-rate')?.value;
+        const customTier1Val = shadow.getElementById('setting-custom-tier1-rate')?.value;
+        const customTier2Val = shadow.getElementById('setting-custom-tier2-rate')?.value;
+        const customTier3Val = shadow.getElementById('setting-custom-tier3-rate')?.value;
 
-        this._hass.callService('thai_energy_monitor', 'configure_settings', {
+        const serviceData = {
           utility_provider: utilityProvider,
           tariff_category: tariffCategory,
           billing_day: billingDay,
@@ -578,7 +585,20 @@ class ThaiEnergyPanel extends HTMLElement {
           solar_sellback_rate: sellbackRate,
           mea_ebill_active: meaEbill,
           mea_epayment_active: meaEpayment
-        }).then(() => {
+        };
+
+        if (customPeakVal && !isNaN(parseFloat(customPeakVal))) serviceData.custom_peak_rate = parseFloat(customPeakVal);
+        if (customOffpeakVal && !isNaN(parseFloat(customOffpeakVal))) serviceData.custom_offpeak_rate = parseFloat(customOffpeakVal);
+        if (customTier1Val && !isNaN(parseFloat(customTier1Val))) serviceData.custom_tier1_rate = parseFloat(customTier1Val);
+        if (customTier2Val && !isNaN(parseFloat(customTier2Val))) serviceData.custom_tier2_rate = parseFloat(customTier2Val);
+        if (customTier3Val && !isNaN(parseFloat(customTier3Val))) serviceData.custom_tier3_rate = parseFloat(customTier3Val);
+
+        const origHtml = btnSaveSettings.innerHTML;
+        btnSaveSettings.innerHTML = '⏳ Saving Configuration...';
+        btnSaveSettings.style.backgroundColor = 'var(--warning-color, #ff9800)';
+        btnSaveSettings.disabled = true;
+
+        this._hass.callService('thai_energy_monitor', 'configure_settings', serviceData).then(() => {
           btnSaveSettings.innerHTML = '✅ Configuration Saved & Reloaded!';
           btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
           setTimeout(() => {
@@ -2020,6 +2040,32 @@ class ThaiEnergyPanel extends HTMLElement {
                   <input type="checkbox" id="setting-mea-epayment" ${d.meaEpaymentActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> Active MEA e-Payment
                 </label>
               </div>
+          <div class="card full-width" style="margin-top: 10px;">
+            <h2>Custom Base Energy Rate Overrides (Optional)</h2>
+            <p style="font-size: 13px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.4; margin-bottom: 16px;">
+              Manually override statutory MEA/PEA base tariff rates (THB/kWh). Leave any field blank to automatically use official standard utility tariff schedules.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">TOU Peak Rate (THB/kWh)</label>
+                <input type="number" id="setting-custom-peak-rate" value="${d.customPeakRate}" placeholder="Default: 5.7982" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">TOU Off-Peak Rate (THB/kWh)</label>
+                <input type="number" id="setting-custom-offpeak-rate" value="${d.customOffpeakRate}" placeholder="Default: 2.6369" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tier 1 Rate (0-150 kWh)</label>
+                <input type="number" id="setting-custom-tier1-rate" value="${d.customTier1Rate}" placeholder="Default: 3.2484" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tier 2 Rate (151-400 kWh)</label>
+                <input type="number" id="setting-custom-tier2-rate" value="${d.customTier2Rate}" placeholder="Default: 4.2233" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tier 3 / Flat Rate (>400 kWh)</label>
+                <input type="number" id="setting-custom-tier3-rate" value="${d.customTier3Rate}" placeholder="Default: 4.4217" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
             </div>
           </div>
 
@@ -2032,7 +2078,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.6.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.7.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 

@@ -27,6 +27,11 @@ CONF_MEA_EPAYMENT: Final[str] = "mea_epayment_active"
 CONF_BESS_CAPACITY_KWH: Final[str] = "bess_capacity_kwh"
 CONF_BESS_GRID_CHARGING: Final[str] = "bess_grid_charging"
 CONF_BESS_TARIFF_MODEL: Final[str] = "bess_tariff_model"
+CONF_CUSTOM_PEAK_RATE: Final[str] = "custom_peak_rate"
+CONF_CUSTOM_OFFPEAK_RATE: Final[str] = "custom_offpeak_rate"
+CONF_CUSTOM_TIER1_RATE: Final[str] = "custom_tier1_rate"
+CONF_CUSTOM_TIER2_RATE: Final[str] = "custom_tier2_rate"
+CONF_CUSTOM_TIER3_RATE: Final[str] = "custom_tier3_rate"
 
 # Utility Providers
 PROVIDER_MEA: Final[str] = "MEA"

@@ -150,6 +150,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Required(CONF_SOLAR_SELLBACK_RATE): vol.Coerce(float),
             vol.Required(CONF_MEA_EBILL): vol.Coerce(bool),
             vol.Required(CONF_MEA_EPAYMENT): vol.Coerce(bool),
+            vol.Optional("custom_peak_rate"): vol.Coerce(float),
+            vol.Optional("custom_offpeak_rate"): vol.Coerce(float),
+            vol.Optional("custom_tier1_rate"): vol.Coerce(float),
+            vol.Optional("custom_tier2_rate"): vol.Coerce(float),
+            vol.Optional("custom_tier3_rate"): vol.Coerce(float),
         }
     )
 
@@ -167,12 +172,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             CONF_MEA_EPAYMENT: bool(call.data[CONF_MEA_EPAYMENT]),
         }
         
+        # Add custom rate overrides if provided
+        for key in ("custom_peak_rate", "custom_offpeak_rate", "custom_tier1_rate", "custom_tier2_rate", "custom_tier3_rate"):
+            if key in call.data and call.data[key] is not None:
+                new_data[key] = float(call.data[key])
+
         # Preserve existing BESS values if present
         if "bess_capacity_kwh" in entry.data:
             new_data["bess_capacity_kwh"] = entry.data["bess_capacity_kwh"]
         if "bess_capex_cost" in entry.data:
             new_data["bess_capex_cost"] = entry.data["bess_capex_cost"]
-            
+        if "bess_grid_charging" in entry.data:
+            new_data["bess_grid_charging"] = entry.data["bess_grid_charging"]
+        if "bess_tariff_model" in entry.data:
+            new_data["bess_tariff_model"] = entry.data["bess_tariff_model"]
+
         hass.config_entries.async_update_entry(entry, data=new_data)
         coordinator.config_data.update(new_data)
         
@@ -211,7 +225,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=1.6.2",
+                    "js_url": "/thai_energy_ui/panel.js?v=1.7.0",
                 }
             },
             require_admin=False,
