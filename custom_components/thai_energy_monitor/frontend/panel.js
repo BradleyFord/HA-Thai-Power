@@ -24,6 +24,26 @@ class ThaiEnergyPanel extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+
+    const now = Date.now();
+    if (this._lastHassUpdate && (now - this._lastHassUpdate < 500)) {
+      if (!this._updateScheduled) {
+        this._updateScheduled = true;
+        setTimeout(() => {
+          this._updateScheduled = false;
+          this._lastHassUpdate = Date.now();
+          this._extractData();
+          if (!this._rendered) {
+            this._initialRender();
+          } else {
+            this._updateDOMValues();
+          }
+        }, 500);
+      }
+      return;
+    }
+
+    this._lastHassUpdate = now;
     this._extractData();
 
     if (!this._rendered) {
@@ -34,27 +54,19 @@ class ThaiEnergyPanel extends HTMLElement {
   }
 
   _getIsOffpeak(states) {
-    for (const entityId in states) {
-      if (entityId.includes('tou_window_status') || entityId.includes('tou_status')) {
-        const st = states[entityId].state;
-        if (st && st !== 'unavailable' && st !== 'unknown' && st !== '0.00') {
-          return st.toLowerCase().includes('off');
-        }
+    if (!states) return false;
+    const billSensor = states['sensor.monthly_estimated_bill'];
+    if (billSensor && billSensor.attributes) {
+      if (billSensor.attributes.tou_status) {
+        return String(billSensor.attributes.tou_status).toLowerCase().includes('off');
+      }
+      if (billSensor.attributes.is_offpeak !== undefined && billSensor.attributes.is_offpeak !== null) {
+        return billSensor.attributes.is_offpeak === true || String(billSensor.attributes.is_offpeak).toLowerCase() === 'true';
       }
     }
-
-    for (const entityId in states) {
-      if (entityId.includes('thai_energy') || entityId.includes('monthly_estimated_bill')) {
-        const attrs = states[entityId].attributes;
-        if (attrs) {
-          if (attrs.is_offpeak !== undefined && attrs.is_offpeak !== null) {
-            return attrs.is_offpeak === true || String(attrs.is_offpeak).toLowerCase() === 'true';
-          }
-          if (attrs.tou_status) {
-            return String(attrs.tou_status).toLowerCase().includes('off');
-          }
-        }
-      }
+    const windowSensor = states['sensor.tou_window_status'] || states['sensor.tou_status'];
+    if (windowSensor && windowSensor.state) {
+      return String(windowSensor.state).toLowerCase().includes('off');
     }
 
     const now = new Date();
@@ -2079,7 +2091,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.7.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.7.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 

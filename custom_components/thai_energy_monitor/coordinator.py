@@ -123,6 +123,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.lifetime_import_kwh: float = 0.0
         self.lifetime_export_kwh: float = 0.0
         self.lifetime_solar_kwh: float = 0.0
+
+        # Recorder history caching
+        self._last_recorder_fetch_time: datetime | None = None
+        self._cached_recorder_history: dict[str, list[float]] | None = None
         self.lifetime_solar_savings_thb: float = 0.0
 
         # Monthly Billing Cycle Accumulators
@@ -481,6 +485,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
         """Query actual daily statistics from Home Assistant recorder database for source sensors."""
+        # Return cached result if fetched within the last 30 minutes (1800 seconds)
+        if (
+            self._last_recorder_fetch_time is not None
+            and self._cached_recorder_history is not None
+            and (now - self._last_recorder_fetch_time).total_seconds() < 1800
+        ):
+            return self._cached_recorder_history
+
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
             bkk_now = now.astimezone(bkk_tz)
@@ -568,11 +580,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if daily_export[idx] > daily_solar[idx]:
                 daily_export[idx] = daily_solar[idx]
 
-        return {
+        res_data = {
             "daily_import_kwh_history": daily_import,
             "daily_solar_kwh_history": daily_solar,
             "daily_export_kwh_history": daily_export,
         }
+        self._cached_recorder_history = res_data
+        self._last_recorder_fetch_time = now
+        return res_data
 
     def _is_power_sensor(self, entity_id: str, state_obj: Any) -> bool:
         """Check if a sensor represents instantaneous power (W/kW) rather than energy (kWh)."""
