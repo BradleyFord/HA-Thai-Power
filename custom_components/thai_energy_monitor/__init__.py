@@ -68,6 +68,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_handle_trigger_12_month_lookback,
         )
 
+    # Register custom service to configure BESS battery parameters dynamically
+    SERVICE_CONFIGURE_BESS = "configure_bess"
+    SERVICE_SCHEMA_CONFIGURE_BESS = vol.Schema(
+        {
+            vol.Required("battery_capacity"): vol.Coerce(float),
+            vol.Required("capex_cost"): vol.Coerce(float),
+        }
+    )
+
+    async def async_handle_configure_bess(call: ServiceCall) -> None:
+        capacity = float(call.data["battery_capacity"])
+        capex = float(call.data["capex_cost"])
+        
+        # Update config entry data dictionary directly
+        new_data = {**entry.data, "bess_capacity_kwh": capacity, "bess_capex_cost": capex}
+        hass.config_entries.async_update_entry(entry, data=new_data)
+        
+        # Update coordinator parameters immediately
+        coordinator.config_data["bess_capacity_kwh"] = capacity
+        coordinator.bess_capex_cost = capex
+        
+        await coordinator.async_request_refresh()
+
+    if not hass.services.has_service(DOMAIN, SERVICE_CONFIGURE_BESS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CONFIGURE_BESS,
+            async_handle_configure_bess,
+            schema=SERVICE_SCHEMA_CONFIGURE_BESS,
+        )
+
     # --- Modern Asynchronous Frontend Registration ---
     frontend_path = hass.config.path("custom_components/thai_energy_monitor/frontend")
 
@@ -117,5 +148,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 pass
             hass.services.async_remove(DOMAIN, SERVICE_ADJUST_MEA_POINTS)
             hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK)
+            try:
+                hass.services.async_remove(DOMAIN, "configure_bess")
+            except Exception:
+                pass
 
     return unload_ok

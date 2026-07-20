@@ -201,6 +201,8 @@ class ThaiEnergyCostSensor(
             "lookback_12_months_data": getattr(self.coordinator, "lookback_12_months_data", None),
             "outage_history": self.coordinator.data.get("outage_history"),
             "total_outage_seconds": self.coordinator.data.get("total_outage_seconds"),
+            "bess_capacity_kwh": self.coordinator.data.get("bess_capacity_kwh") or self.coordinator.config_data.get("bess_capacity_kwh", 5.0),
+            "bess_capex_cost": self.coordinator.data.get("bess_capex_cost") or getattr(self.coordinator, "bess_capex_cost", 50000.0),
         }
 
     @property

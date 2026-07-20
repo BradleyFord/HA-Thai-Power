@@ -377,6 +377,8 @@ class ThaiEnergyPanel extends HTMLElement {
       lookbackData: lookbackData,
       outageHistory: getAttribute('sensor.monthly_estimated_bill', 'outage_history') || [],
       totalOutageSeconds: getAttribute('sensor.monthly_estimated_bill', 'total_outage_seconds') || 0,
+      bessCapacityKwh: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capacity_kwh')) || 5.0,
+      bessCapexCost: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0,
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: solcastForecastToday,
       solcastPowerNow: solcastPowerNow,
@@ -443,6 +445,22 @@ class ThaiEnergyPanel extends HTMLElement {
         this._isAnalyzing = true;
         this._initialRender();
         this._hass.callService('thai_energy_monitor', 'trigger_12_month_lookback', {});
+      });
+    }
+
+    const btnSaveBess = shadow.getElementById('btn-save-bess');
+    if (btnSaveBess) {
+      btnSaveBess.addEventListener('click', () => {
+        const capacityInput = shadow.getElementById('input-bess-capacity');
+        const capexInput = shadow.getElementById('input-bess-capex');
+        if (capacityInput && capexInput) {
+          const cap = parseFloat(capacityInput.value) || 5.0;
+          const capex = parseFloat(capexInput.value) || 50000.0;
+          this._hass.callService('thai_energy_monitor', 'configure_bess', {
+            battery_capacity: cap,
+            capex_cost: capex
+          });
+        }
       });
     }
   }
@@ -1455,32 +1473,47 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val highlight">฿${d.bessSavings}</span>
               </div>
               <div class="row">
-                <span class="label">Simulation Strategy</span>
-                <span class="val">Solar Storage &rarr; Peak Discharge</span>
+                <span class="label">Estimated Annual Savings</span>
+                <span class="val highlight">฿${(parseFloat(d.bessSavings || 0) * 12).toFixed(2)}</span>
+              </div>
+              <div class="row">
+                <span class="label">CAPEX Capital Investment</span>
+                <span class="val">฿${d.bessCapexCost.toLocaleString()}</span>
+              </div>
+              <div class="row">
+                <span class="label">Simple Payback Period</span>
+                <span class="val" style="font-weight: bold; color: ${(() => {
+                  const monthly = parseFloat(d.bessSavings || 0);
+                  if (monthly <= 0) return 'var(--error-color, #f44336)';
+                  const yrs = d.bessCapexCost / (monthly * 12);
+                  return yrs < 6.0 ? 'var(--success-color, #4caf50)' : (yrs < 12.0 ? 'var(--warning-color, #ff9800)' : 'var(--error-color, #f44336)');
+                })()};">
+                  ${(() => {
+                    const monthly = parseFloat(d.bessSavings || 0);
+                    if (monthly <= 0) return 'Infinite (Requires solar surplus)';
+                    const yrs = d.bessCapexCost / (monthly * 12);
+                    return `${yrs.toFixed(1)} Years`;
+                  })()}
+                </span>
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>BESS Simulation Configuration</h2>
-            <div class="table-rows">
-              <div class="row">
-                <span class="label">Configured Battery Capacity</span>
-                <span class="val">5.0 kWh</span>
+            <h2>BESS Interactive Calibration</h2>
+            <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Simulated Battery Capacity (kWh)</label>
+                <input type="number" id="input-bess-capacity" value="${d.bessCapacityKwh}" step="0.5" min="0.5" max="100.0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
-              <div class="row">
-                <span class="label">Battery Storage Efficiency</span>
-                <span class="val">90.0 %</span>
-              </div>
-              <div class="row">
-                <span class="label">Discharge Time Window</span>
-                <span class="val">Peak hours (09:00 - 22:00)</span>
-              </div>
-              <div class="row">
-                <span class="label">Charge Time Window</span>
-                <span class="val">Off-peak hours or Solar surplus</span>
+              <div>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Battery CAPEX Capital Cost (THB)</label>
+                <input type="number" id="input-bess-capex" value="${d.bessCapexCost}" step="1000" min="0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
             </div>
+            <button class="action-btn" id="btn-save-bess" style="width: 100%; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; transition: background-color 0.2s;">
+              💾 Save & Recalculate Simulation
+            </button>
           </div>
         </div>
       ` : ''}
@@ -1703,7 +1736,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.4.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.4.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 

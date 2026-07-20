@@ -147,6 +147,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # BESS Battery Simulation Accumulators
         self.bess_charged_kwh: float = 0.0
         self.bess_simulated_savings_thb: float = 0.0
+        self.bess_capex_cost: float = float(entry.data.get("bess_capex_cost", 50000.0))
 
         # MEA Gamification Accumulator
         self.mea_points: int = MEA_POINTS_INITIAL_BONUS if entry.data.get(CONF_UTILITY_PROVIDER) == PROVIDER_MEA else 0
@@ -749,6 +750,23 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Fetch 30-day historical daily arrays from Python engine
         recorder_history = await self._async_fetch_recorder_history(now)
 
+        # Real-time BESS battery shifting simulation
+        bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
+        bess_efficiency = 0.90
+        
+        total_shifted_savings = 0.0
+        daily_export_history = recorder_history.get("daily_export_kwh_history", [])
+        
+        for idx in range(min(30, len(daily_export_history))):
+            exp_kwh = daily_export_history[idx]
+            stored = min(exp_kwh, bess_capacity)
+            discharged = stored * bess_efficiency
+            active_retail = TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217
+            shifting_benefit = max(0.0, active_retail - sellback_rate)
+            total_shifted_savings += discharged * shifting_benefit
+            
+        self.bess_simulated_savings_thb = total_shifted_savings
+
         return {
             "tou_window_status": "Off-Peak" if is_offpeak else "Peak",
             # Monthly Resetting Entities
@@ -787,6 +805,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "phantom_total_bill": round(phantom_total_bill, 2),
             "potential_tariff_diff_thb": round(potential_tariff_diff_thb, 2),
             "bess_simulated_savings_thb": round(self.bess_simulated_savings_thb, 2),
+            "bess_capex_cost": self.bess_capex_cost,
             
             # MEA Gamification & Outages
             "mea_points": self.mea_points,
