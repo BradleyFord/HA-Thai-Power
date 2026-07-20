@@ -369,12 +369,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         peak_rate: float,
         offpeak_rate: float,
         ft_rate: float,
-        grid_charging: bool
+        grid_charging: bool,
+        tariff_model: str
     ) -> float:
         """Calculate BESS net savings for a single day based on charging strategy and TOU windows.
 
         This considers weekends, holidays, grid top-up costs during Off-Peak, and retail
-        arbitrage differentials during Peak periods.
+        arbitrage differentials during Peak periods, supporting both normal tiered and TOU models.
         """
         # Check if day is weekend (Saturday=5, Sunday=6)
         is_weekend = day_date.weekday() in (5, 6)
@@ -391,45 +392,58 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         vat_mult = 1.07
 
         # Rates including Ft & VAT
-        peak_cost_kwh = (peak_rate + ft_rate) * vat_mult
-        offpeak_cost_kwh = (offpeak_rate + ft_rate) * vat_mult
+        if tariff_model == "normal":
+            # Normal Tiered Tariff: flat rate (using 4.4217 as standard flat rate)
+            flat_rate = 4.4217
+            retail_cost_kwh = (flat_rate + ft_rate) * vat_mult
 
-        if grid_charging:
-            if is_offpeak_all_day:
-                # No arbitrage benefit on off-peak days because peak_rate == offpeak_rate.
-                # Just charge from solar surplus and discharge during off-peak to save opportunity cost.
-                solar_charged = min(export_kwh, bess_capacity)
-                discharged = solar_charged * bess_efficiency
-                charge_cost = solar_charged * sellback_rate
-                benefit = discharged * offpeak_cost_kwh
-                return max(0.0, benefit - charge_cost)
-            else:
-                # Weekdays: charge to full capacity
-                solar_charged = min(export_kwh, bess_capacity)
-                grid_charged = max(0.0, bess_capacity - solar_charged)
-
-                charge_cost = (solar_charged * sellback_rate) + (grid_charged * offpeak_cost_kwh)
-                discharged = bess_capacity * bess_efficiency
-
-                # Check if household Peak import consumption limit is respected
-                # Assume peak consumption is 40% of daily import
-                peak_consumption = import_kwh * 0.40
-                actual_discharge = min(discharged, peak_consumption) if import_kwh > 0 else discharged
-
-                benefit = actual_discharge * peak_cost_kwh
-                return max(0.0, benefit - charge_cost)
-        else:
-            # Pure Solar Charging (no grid charging)
+            # Solar charging only (grid charging makes no financial sense for flat rates)
             solar_charged = min(export_kwh, bess_capacity)
             discharged = solar_charged * bess_efficiency
             charge_cost = solar_charged * sellback_rate
-
-            if is_offpeak_all_day:
-                benefit = discharged * offpeak_cost_kwh
-            else:
-                benefit = discharged * peak_cost_kwh
-
+            benefit = discharged * retail_cost_kwh
             return max(0.0, benefit - charge_cost)
+        else:
+            # TOU Tariff model
+            peak_cost_kwh = (peak_rate + ft_rate) * vat_mult
+            offpeak_cost_kwh = (offpeak_rate + ft_rate) * vat_mult
+
+            if grid_charging:
+                if is_offpeak_all_day:
+                    # No arbitrage benefit on off-peak days because peak_rate == offpeak_rate.
+                    # Just charge from solar surplus and discharge during off-peak to save opportunity cost.
+                    solar_charged = min(export_kwh, bess_capacity)
+                    discharged = solar_charged * bess_efficiency
+                    charge_cost = solar_charged * sellback_rate
+                    benefit = discharged * offpeak_cost_kwh
+                    return max(0.0, benefit - charge_cost)
+                else:
+                    # Weekdays: charge to full capacity
+                    solar_charged = min(export_kwh, bess_capacity)
+                    grid_charged = max(0.0, bess_capacity - solar_charged)
+
+                    charge_cost = (solar_charged * sellback_rate) + (grid_charged * offpeak_cost_kwh)
+                    discharged = bess_capacity * bess_efficiency
+
+                    # Check if household Peak import consumption limit is respected
+                    # Assume peak consumption is 40% of daily import
+                    peak_consumption = import_kwh * 0.40
+                    actual_discharge = min(discharged, peak_consumption) if import_kwh > 0 else discharged
+
+                    benefit = actual_discharge * peak_cost_kwh
+                    return max(0.0, benefit - charge_cost)
+            else:
+                # Pure Solar Charging (no grid charging)
+                solar_charged = min(export_kwh, bess_capacity)
+                discharged = solar_charged * bess_efficiency
+                charge_cost = solar_charged * sellback_rate
+
+                if is_offpeak_all_day:
+                    benefit = discharged * offpeak_cost_kwh
+                else:
+                    benefit = discharged * peak_cost_kwh
+
+                return max(0.0, benefit - charge_cost)
 
     async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
         """Query actual daily statistics from Home Assistant recorder database for source sensors."""
@@ -852,6 +866,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
         bess_efficiency = 0.90
         grid_charging = bool(self.config_data.get("bess_grid_charging", False))
+        tariff_model = self.config_data.get("bess_tariff_model", "tou")
 
         total_shifted_savings = 0.0
         daily_export_history = recorder_history.get("daily_export_kwh_history", [])
@@ -873,7 +888,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 peak_rate=TARIFF_1_3_2_PEAK if category.startswith("1.3") else 4.4217,
                 offpeak_rate=TARIFF_1_3_2_OFFPEAK if category.startswith("1.3") else 4.4217,
                 ft_rate=ft_rate,
-                grid_charging=grid_charging
+                grid_charging=grid_charging,
+                tariff_model=tariff_model
             )
             total_shifted_savings += day_savings
 
@@ -1178,6 +1194,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             bess_capacity = float(self.data["bess_capacity_kwh"])
         bess_efficiency = 0.90
         grid_charging = bool(self.config_data.get("bess_grid_charging", False))
+        tariff_model = self.config_data.get("bess_tariff_model", "tou")
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
         category = self.active_tariff_category
         
@@ -1210,7 +1227,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 peak_rate=peak_rate,
                 offpeak_rate=offpeak_rate,
                 ft_rate=ft_rate,
-                grid_charging=grid_charging
+                grid_charging=grid_charging,
+                tariff_model=tariff_model
             )
             
             # Estimate shifted battery energy

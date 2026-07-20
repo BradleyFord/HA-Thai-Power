@@ -419,6 +419,7 @@ class ThaiEnergyPanel extends HTMLElement {
       bessCapacityKwh: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capacity_kwh')) || 5.0,
       bessCapexCost: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0,
       bessGridCharging: getAttribute('sensor.monthly_estimated_bill', 'bess_grid_charging') === true || String(getAttribute('sensor.monthly_estimated_bill', 'bess_grid_charging')).toLowerCase() === 'true',
+      bessTariffModel: getAttribute('sensor.monthly_estimated_bill', 'bess_tariff_model') || 'tou',
       billingDay: parseInt(getAttribute('sensor.monthly_estimated_bill', 'billing_day')) || 1,
       meaEbillActive: getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active')).toLowerCase() === 'true',
       meaEpaymentActive: getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active')).toLowerCase() === 'true',
@@ -507,14 +508,17 @@ class ThaiEnergyPanel extends HTMLElement {
         const capacityInput = shadow.getElementById('input-bess-capacity');
         const capexInput = shadow.getElementById('input-bess-capex');
         const gridChargeInput = shadow.getElementById('input-bess-grid-charge');
+        const tariffModelInput = shadow.getElementById('input-bess-tariff-model');
         if (capacityInput && capexInput) {
           const cap = parseFloat(capacityInput.value) || 5.0;
           const capex = parseFloat(capexInput.value) || 50000.0;
           const gridCharge = gridChargeInput ? gridChargeInput.checked === true : false;
+          const tariffModel = tariffModelInput ? tariffModelInput.value : 'tou';
           this._hass.callService('thai_energy_monitor', 'configure_bess', {
             battery_capacity: cap,
             capex_cost: capex,
-            grid_charging: gridCharge
+            grid_charging: gridCharge,
+            tariff_model: tariffModel
           });
         }
       });
@@ -1541,7 +1545,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ${this._activeTab === 'bess' ? `
         <div class="grid">
           <div class="card">
-            <h2>BESS Battery Storage Simulation</h2>
+            <h2>BESS Battery Storage Simulation (${d.bessTariffModel === 'tou' ? 'TOU 1.3.2' : 'Tiered 1.2'})</h2>
             <div class="metric-main highlight">฿${this._formatNum(d.bessSavings)}</div>
             <div class="table-rows">
               <div class="row">
@@ -1585,6 +1589,13 @@ class ThaiEnergyPanel extends HTMLElement {
               <div>
                 <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Battery CAPEX Capital Cost (THB)</label>
                 <input type="number" id="input-bess-capex" value="${d.bessCapexCost}" step="1000" min="0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
+              </div>
+              <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Simulated Tariff Model</label>
+                <select id="input-bess-tariff-model" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none; cursor: pointer;">
+                  <option value="tou" ${d.bessTariffModel === 'tou' ? 'selected' : ''}>TOU Tariff 1.3.2 (Peak / Off-Peak)</option>
+                  <option value="normal" ${d.bessTariffModel === 'normal' ? 'selected' : ''}>Normal Tiered Tariff 1.2 (Flat/Marginal)</option>
+                </select>
               </div>
               <div style="grid-column: 1 / -1; margin-top: 6px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer; user-select: none;">
@@ -1956,7 +1967,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.6.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.6.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 

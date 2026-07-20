@@ -26,6 +26,7 @@ CONF_MEA_EBILL: Final[str] = "mea_ebill_active"
 CONF_MEA_EPAYMENT: Final[str] = "mea_epayment_active"
 CONF_BESS_CAPACITY_KWH: Final[str] = "bess_capacity_kwh"
 CONF_BESS_GRID_CHARGING: Final[str] = "bess_grid_charging"
+CONF_BESS_TARIFF_MODEL: Final[str] = "bess_tariff_model"
 
 # Utility Providers
 PROVIDER_MEA: Final[str] = "MEA"
