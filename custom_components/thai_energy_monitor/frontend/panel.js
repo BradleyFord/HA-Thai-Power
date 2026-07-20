@@ -375,6 +375,8 @@ class ThaiEnergyPanel extends HTMLElement {
       solarMonthlyTrends: solarMonthlyTrends,
       dailyBreakdown: dailyBreakdown,
       lookbackData: lookbackData,
+      outageHistory: getAttribute('sensor.monthly_estimated_bill', 'outage_history') || [],
+      totalOutageSeconds: getAttribute('sensor.monthly_estimated_bill', 'total_outage_seconds') || 0,
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: solcastForecastToday,
       solcastPowerNow: solcastPowerNow,
@@ -1603,24 +1605,56 @@ class ThaiEnergyPanel extends HTMLElement {
           </div>
 
           <div class="card">
-            <h2>Grid Outage & Economic Resilience</h2>
-            <div class="metric-main warning">฿${d.outageCost}</div>
-            <div class="table-rows">
+            <h2>Grid Outage & Reliability History</h2>
+            <div class="metric-main warning">${d.outageCount} <span style="font-size: 20px; font-weight: 500;">Incidents</span></div>
+            <div class="table-rows" style="margin-bottom: 20px;">
               <div class="row">
-                <span class="label">Outage Incidents Recorded</span>
-                <span class="val warning">${d.outageCount} events</span>
-              </div>
-              <div class="row">
-                <span class="label">Macro Economic Loss Impact</span>
-                <span class="val">308.41 ฿ / kWh</span>
+                <span class="label">Total Cumulative Downtime</span>
+                <span class="val warning">${(() => {
+                  const totalSec = d.totalOutageSeconds || 0;
+                  const mins = Math.floor(totalSec / 60);
+                  if (mins === 0 && totalSec > 0) return `${totalSec.toFixed(0)}s`;
+                  const hrs = Math.floor(mins / 60);
+                  const remMins = mins % 60;
+                  const remSecs = Math.floor(totalSec % 60);
+                  return hrs > 0 ? `${hrs}h ${remMins}m` : `${mins}m ${remSecs}s`;
+                })()}</span>
               </div>
             </div>
+
+            <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 14px; font-weight: 500; color: #fff;">Outage Log Book</h3>
+            ${d.outageHistory && d.outageHistory.length > 0 ? `
+              <div style="overflow-x: auto; background-color: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; color: var(--primary-text-color, #fff);">
+                  <thead>
+                    <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
+                      <th style="padding: 8px 12px; font-weight: 600; color: #9e9e9e;">Start Time</th>
+                      <th style="padding: 8px 12px; font-weight: 600; color: #9e9e9e;">End Time</th>
+                      <th style="padding: 8px 12px; font-weight: 600; color: #9e9e9e;">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${d.outageHistory.map(row => `
+                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                        <td style="padding: 8px 12px;">${row.start}</td>
+                        <td style="padding: 8px 12px;">${row.end}</td>
+                        <td style="padding: 8px 12px; font-weight: 600; color: var(--error-color, #f44336);">${row.duration}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : `
+              <div style="text-align: center; padding: 20px; color: #9e9e9e; font-size: 13px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+                No outages recorded in the log book yet.
+              </div>
+            `}
           </div>
         </div>
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.9 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.4.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 
