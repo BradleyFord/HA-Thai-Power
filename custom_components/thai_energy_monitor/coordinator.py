@@ -904,32 +904,48 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lifetime_solar_revenue_thb = self.lifetime_export_kwh * sellback_rate
         lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + lifetime_solar_revenue_thb
 
-        # Project 30-day monthly usage based on active run-rate
-        projected_monthly_import = (self.monthly_import_kwh / current_day) * 30.0
-
-        monthly_ft_charge = projected_monthly_import * ft_rate
-        base_cost = 0.0
+        # 1. Calculate Accrued Cost to Date for actual consumption consumed so far
+        accrued_ft_charge = self.monthly_import_kwh * ft_rate
+        accrued_base_cost = 0.0
         service_charge = 38.22
 
         if category == TARIFF_1_1:
             service_charge = TARIFF_1_1_SERVICE_CHARGE
+            if self.monthly_import_kwh <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
+                accrued_base_cost = 0.0
+            else:
+                accrued_base_cost = self.calculate_tiered_cost(self.monthly_import_kwh, TARIFF_1_1_TIERS)
+
+        elif category == TARIFF_1_2:
+            service_charge = TARIFF_1_2_SERVICE_CHARGE
+            accrued_base_cost = self.calculate_tiered_cost(self.monthly_import_kwh, self.active_tiered_1_2_tiers)
+
+        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            service_charge = TARIFF_1_3_1_SERVICE_CHARGE if category == TARIFF_1_3_1 else TARIFF_1_3_2_SERVICE_CHARGE
+            accrued_base_cost = ((self.monthly_import_kwh * 0.4) * self.active_tou_peak_rate) + (
+                (self.monthly_import_kwh * 0.6) * self.active_tou_offpeak_rate
+            )
+
+        accrued_subtotal = accrued_base_cost + service_charge + accrued_ft_charge
+        accrued_vat_amount = accrued_subtotal * VAT_RATE
+        monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
+
+        # 2. Project 30-day monthly usage based on active run-rate
+        projected_monthly_import = (self.monthly_import_kwh / max(1, current_day)) * 30.0
+
+        monthly_ft_charge = projected_monthly_import * ft_rate
+        base_cost = 0.0
+
+        if category == TARIFF_1_1:
             if projected_monthly_import <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
                 base_cost = 0.0
             else:
                 base_cost = self.calculate_tiered_cost(projected_monthly_import, TARIFF_1_1_TIERS)
 
         elif category == TARIFF_1_2:
-            service_charge = TARIFF_1_2_SERVICE_CHARGE
             base_cost = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
 
-        elif category == TARIFF_1_3_1:
-            service_charge = TARIFF_1_3_1_SERVICE_CHARGE
-            base_cost = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
-                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
-            )
-
-        elif category == TARIFF_1_3_2:
-            service_charge = TARIFF_1_3_2_SERVICE_CHARGE
+        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
             base_cost = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
                 (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
             )
@@ -996,7 +1012,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return {
             "tou_window_status": "Off-Peak" if is_offpeak else "Peak",
-            # Monthly Resetting Entities
+            # Monthly Resetting Entities (Accrued To Date & Projected Full Month)
+            "monthly_accrued_bill": round(monthly_accrued_bill, 2),
+            "monthly_accrued_base_cost": round(accrued_base_cost, 2),
+            "monthly_accrued_ft_charge": round(accrued_ft_charge, 2),
+            "monthly_accrued_vat_amount": round(accrued_vat_amount, 2),
+            "projected_monthly_import": round(projected_monthly_import, 3),
+
             "monthly_estimated_bill": round(monthly_estimated_bill, 2),
             "monthly_base_cost": round(base_cost, 2),
             "monthly_ft_charge": round(monthly_ft_charge, 2),

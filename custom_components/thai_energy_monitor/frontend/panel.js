@@ -152,6 +152,12 @@ class ThaiEnergyPanel extends HTMLElement {
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
     // Map exact sensor names to eliminate collision with any other integration sensors
+    const accruedBill = getEntityState('sensor.monthly_accrued_bill') || getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_bill') || '0.00';
+    const accruedBaseCost = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_base_cost') || '0.00';
+    const accruedFtCharge = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_ft_charge') || '0.00';
+    const accruedVatAmount = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_vat_amount') || '0.00';
+    const projectedImport = getAttribute('sensor.monthly_estimated_bill', 'projected_monthly_import') || '0.00';
+
     const totalBill = getEntityState('sensor.monthly_estimated_bill');
     const baseCost = getEntityState('sensor.monthly_base_energy_cost');
     const ftCharge = getEntityState('sensor.monthly_ft_charge');
@@ -396,6 +402,11 @@ class ThaiEnergyPanel extends HTMLElement {
     this._data = {
       touStatus: touStatus,
       isOffpeak: isOffpeak,
+      accruedBill: accruedBill,
+      accruedBaseCost: accruedBaseCost,
+      accruedFtCharge: accruedFtCharge,
+      accruedVatAmount: accruedVatAmount,
+      projectedImport: projectedImport,
       totalBill: totalBill,
       baseCost: baseCost,
       ftCharge: ftCharge,
@@ -668,10 +679,11 @@ class ThaiEnergyPanel extends HTMLElement {
     };
 
     setText('val-tou-status', d.touStatus);
+    setText('val-accrued-bill', `฿${this._formatNum(d.accruedBill)}`);
     setText('val-total-bill', `฿${this._formatNum(d.totalBill)}`);
-    setText('val-base-cost', `฿${this._formatNum(d.baseCost)}`);
-    setText('val-ft-charge', `฿${this._formatNum(d.ftCharge)}`);
-    setText('val-vat-amount', `฿${this._formatNum(d.vatAmount)}`);
+    setText('val-base-cost', `฿${this._formatNum(d.accruedBaseCost)}`);
+    setText('val-ft-charge', `฿${this._formatNum(d.accruedFtCharge)}`);
+    setText('val-vat-amount', `฿${this._formatNum(d.accruedVatAmount)}`);
     setText('val-import-kwh', this._formatNum(d.importKwh));
     setText('val-solar-benefit', `฿${d.totalSolarBenefit}`);
     setText('val-solar-savings-main', `฿${this._formatNum(d.solarSavings)}`);
@@ -1256,24 +1268,27 @@ class ThaiEnergyPanel extends HTMLElement {
       ${this._activeTab === 'overview' ? `
         <div class="grid">
           <div class="card">
-            <h2>Current Monthly Estimated Bill <span>(THB)</span></h2>
-            <div class="metric-main" id="val-total-bill">฿${this._formatNum(d.totalBill)}</div>
+            <h2>Current Accrued Bill (To Date) <span>(THB)</span></h2>
+            <div class="metric-main" id="val-accrued-bill">฿${this._formatNum(d.accruedBill)}</div>
+            <div style="font-size: 13px; color: var(--primary-color, #03a9f4); margin-bottom: 12px; font-weight: 500;">
+              Projected Month-End: <strong>฿${this._formatNum(d.totalBill)}</strong> (${this._formatNum(d.projectedImport)} kWh run-rate)
+            </div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Base Energy Charge</span>
-                <span class="val" id="val-base-cost">฿${this._formatNum(d.baseCost)}</span>
+                <span class="label">Accrued Base Energy Charge</span>
+                <span class="val" id="val-base-cost">฿${this._formatNum(d.accruedBaseCost)}</span>
               </div>
               <div class="row">
-                <span class="label">Ft Charge (${d.ftRate} ฿/kWh)</span>
-                <span class="val" id="val-ft-charge">฿${this._formatNum(d.ftCharge)}</span>
+                <span class="label">Accrued Ft Charge (${d.ftRate} ฿/kWh)</span>
+                <span class="val" id="val-ft-charge">฿${this._formatNum(d.accruedFtCharge)}</span>
               </div>
               <div class="row">
                 <span class="label">Fixed Service Charge</span>
                 <span class="val">฿${this._formatNum(d.serviceCharge)}</span>
               </div>
               <div class="row">
-                <span class="label">Statutory VAT (7%)</span>
-                <span class="val" id="val-vat-amount">฿${this._formatNum(d.vatAmount)}</span>
+                <span class="label">Accrued Statutory VAT (7%)</span>
+                <span class="val" id="val-vat-amount">฿${this._formatNum(d.accruedVatAmount)}</span>
               </div>
             </div>
           </div>
@@ -1281,6 +1296,9 @@ class ThaiEnergyPanel extends HTMLElement {
           <div class="card">
             <h2>Detailed Consumption & Rates</h2>
             <div class="metric-main" style="color: var(--primary-color, #03a9f4);"><span id="val-import-kwh">${this._formatNum(d.importKwh)}</span> <span style="font-size: 18px;">kWh</span></div>
+            <div style="font-size: 13px; color: #9e9e9e; margin-bottom: 12px;">
+              Projected Month-End Volume: <strong>${this._formatNum(d.projectedImport)} kWh</strong>
+            </div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">TOU Window Status</span>
@@ -2115,7 +2133,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.7.9 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 

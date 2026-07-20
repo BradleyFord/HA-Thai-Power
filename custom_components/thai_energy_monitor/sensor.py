@@ -49,7 +49,10 @@ async def async_setup_entry(
 
         # --- Current Monthly Billing Cycle Entities (Auto-reset on billing day) ---
         ThaiEnergyCostSensor(
-            coordinator, entry, "monthly_estimated_bill", "Monthly Estimated Bill", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
+            coordinator, entry, "monthly_accrued_bill", "Monthly Accrued Bill (To Date)", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
+        ),
+        ThaiEnergyCostSensor(
+            coordinator, entry, "monthly_estimated_bill", "Monthly Estimated Bill (Projected)", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
         ThaiEnergyCostSensor(
             coordinator, entry, "monthly_base_cost", "Monthly Base Energy Cost", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
@@ -197,6 +200,11 @@ class ThaiEnergyCostSensor(
             "import_baseline_kwh": self.coordinator.import_baseline_kwh,
             "solar_baseline_kwh": self.coordinator.solar_baseline_kwh,
             "export_baseline_kwh": self.coordinator.export_baseline_kwh,
+            "monthly_accrued_bill": self.coordinator.data.get("monthly_accrued_bill"),
+            "monthly_accrued_base_cost": self.coordinator.data.get("monthly_accrued_base_cost"),
+            "monthly_accrued_ft_charge": self.coordinator.data.get("monthly_accrued_ft_charge"),
+            "monthly_accrued_vat_amount": self.coordinator.data.get("monthly_accrued_vat_amount"),
+            "projected_monthly_import": self.coordinator.data.get("projected_monthly_import"),
             "daily_import_kwh_history": self.coordinator.data.get("daily_import_kwh_history"),
             "daily_solar_kwh_history": self.coordinator.data.get("daily_solar_kwh_history"),
             "daily_export_kwh_history": self.coordinator.data.get("daily_export_kwh_history"),
