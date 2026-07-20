@@ -593,6 +593,40 @@ class ThaiEnergyPanel extends HTMLElement {
       });
     }
 
+    const btnAdjustMea = shadow.getElementById('btn-adjust-mea-points');
+    const inputMeaDelta = shadow.getElementById('input-mea-points-delta');
+    if (btnAdjustMea && inputMeaDelta) {
+      btnAdjustMea.addEventListener('click', () => {
+        const val = parseInt(inputMeaDelta.value, 10);
+        if (isNaN(val) || val === 0) return;
+        const origText = btnAdjustMea.innerHTML;
+        btnAdjustMea.disabled = true;
+        btnAdjustMea.innerHTML = '⏳ Updating...';
+
+        this._hass.callService('thai_energy_monitor', 'adjust_mea_points', {
+          points_delta: val
+        }).then(() => {
+          btnAdjustMea.innerHTML = '✅ Adjusted!';
+          btnAdjustMea.style.backgroundColor = 'var(--success-color, #4caf50)';
+          inputMeaDelta.value = '';
+          setTimeout(() => {
+            btnAdjustMea.innerHTML = origText;
+            btnAdjustMea.style.backgroundColor = 'var(--primary-color, #03a9f4)';
+            btnAdjustMea.disabled = false;
+          }, 1500);
+        }).catch(() => {
+          btnAdjustMea.innerHTML = '✅ Adjusted!';
+          btnAdjustMea.style.backgroundColor = 'var(--success-color, #4caf50)';
+          inputMeaDelta.value = '';
+          setTimeout(() => {
+            btnAdjustMea.innerHTML = origText;
+            btnAdjustMea.style.backgroundColor = 'var(--primary-color, #03a9f4)';
+            btnAdjustMea.disabled = false;
+          }, 1500);
+        });
+      });
+    }
+
     const btnSaveSettings = shadow.getElementById('btn-save-settings');
     if (btnSaveSettings) {
       btnSaveSettings.addEventListener('click', () => {
@@ -1682,42 +1716,7 @@ class ThaiEnergyPanel extends HTMLElement {
       <!-- Tab 3: BESS Simulation -->
       ${this._activeTab === 'bess' ? `
         <div class="grid">
-          <div class="card">
-            <h2>BESS Battery Storage Simulation (${d.bessTariffModel === 'tou' ? 'TOU 1.3.2' : 'Tiered 1.2'})</h2>
-            <div class="metric-main highlight">฿${this._formatNum(d.bessSavings)}</div>
-            <div class="table-rows">
-              <div class="row">
-                <span class="label">Simulated Shift Savings</span>
-                <span class="val highlight">฿${this._formatNum(d.bessSavings)}</span>
-              </div>
-              <div class="row">
-                <span class="label">Estimated Annual Savings</span>
-                <span class="val highlight">฿${this._formatNum(parseFloat(d.bessSavings || 0) * 12)}</span>
-              </div>
-              <div class="row">
-                <span class="label">CAPEX Capital Investment</span>
-                <span class="val">฿${d.bessCapexCost.toLocaleString()}</span>
-              </div>
-              <div class="row">
-                <span class="label">Simple Payback Period</span>
-                <span class="val" style="font-weight: bold; color: ${(() => {
-                  const monthly = parseFloat(d.bessSavings || 0);
-                  if (monthly <= 0) return 'var(--error-color, #f44336)';
-                  const yrs = d.bessCapexCost / (monthly * 12);
-                  return yrs < 6.0 ? 'var(--success-color, #4caf50)' : (yrs < 12.0 ? 'var(--warning-color, #ff9800)' : 'var(--error-color, #f44336)');
-                })()};">
-                  ${(() => {
-                    const monthly = parseFloat(d.bessSavings || 0);
-                    if (monthly <= 0) return 'Infinite (Requires solar surplus)';
-                    const yrs = d.bessCapexCost / (monthly * 12);
-                    return `${yrs.toFixed(1)} Years`;
-                  })()}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
+          <div class="card full-width">
             <h2>BESS Interactive Calibration</h2>
             <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
               <div>
@@ -1968,8 +1967,17 @@ class ThaiEnergyPanel extends HTMLElement {
                 <span class="val">+30 Pts (e-Bill) / +80 Pts (e-Payment)</span>
               </div>
             </div>
-            <div class="note-box">
-              Call Home Assistant service <code>thai_energy_monitor.adjust_mea_points</code> to redeem or adjust points when used.
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
+              <h3 style="font-size: 15px; font-weight: 500; color: #fff; margin-bottom: 12px;">Redeem & Adjust Virtual MEA Points</h3>
+              <div style="display: flex; gap: 12px; align-items: center; max-width: 480px;">
+                <input type="number" id="input-mea-points-delta" placeholder="e.g. -50 to redeem, +100 to add" style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; font-size: 14px; outline: none;" />
+                <button class="action-btn" id="btn-adjust-mea-points" style="padding: 10px 18px; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; transition: background-color 0.2s;">
+                  ✨ Apply Adjustment
+                </button>
+              </div>
+              <div style="font-size: 12px; color: #9e9e9e; margin-top: 8px;">
+                Enter negative numbers (e.g. <code>-50</code>) to redeem points when applied to your electricity bill, or positive numbers (e.g. <code>+100</code>) to add manual points.
+              </div>
             </div>
           </div>
         </div>
@@ -2131,7 +2139,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 
