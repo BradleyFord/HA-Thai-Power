@@ -4,6 +4,7 @@
  * rich detailed metrics across 4 tabs, Y-axis labeled cumulative monthly cost chart,
  * 30-day multi-trend SVG solar line chart with solid historical vs dashed predicted segments,
  * exact integration entity ID mapping to avoid collision, dynamic Peak/Off-Peak TOU chart option,
+ * daily side-by-side bar chart showing volume (kWh) & value (THB) comparisons,
  * and direct Python coordinator baseline subtraction diagnostic panel.
  */
 
@@ -13,6 +14,7 @@ class ThaiEnergyPanel extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._hass = null;
     this._activeTab = 'overview';
+    this._dailyChartMode = 'kwh';
     this._data = {};
     this._rendered = false;
   }
@@ -174,6 +176,7 @@ class ThaiEnergyPanel extends HTMLElement {
     const totalVatNum = parseFloat(vatAmount) || 0;
     const ftRate = getAttribute('sensor.monthly_estimated_bill', 'ft_rate') || 0.395;
     const tariffCategory = getAttribute('sensor.monthly_estimated_bill', 'tariff_category') || '1.2';
+    const sellbackRate = getAttribute('sensor.monthly_estimated_bill', 'solar_sellback_rate') || 2.20;
     const VAT_RATE = 0.07;
 
     // Check if active tariff is TOU (Time of Use 1.3.1 or 1.3.2)
@@ -233,6 +236,44 @@ class ThaiEnergyPanel extends HTMLElement {
         isPastOrToday: isPastOrToday,
       };
     });
+
+    // Generate 30-Day Daily Import vs Solar Breakdown (Volume & Value Analysis)
+    const dailyBreakdown = [];
+    for (let i = 0; i < 30; i++) {
+      const dayNum = i + 1;
+      const bar = monthlyDailyBars[i];
+      const prevBar = i > 0 ? monthlyDailyBars[i - 1] : { tier1: 0, tier2: 0, tier3: 0, ft: 0, peak: 0, offpeak: 0 };
+      
+      const impKwh = pyImportHistory[i] !== undefined ? parseFloat(pyImportHistory[i]) : 15.0;
+      const solKwh = pySolarHistory[i] !== undefined ? parseFloat(pySolarHistory[i]) : 15.0;
+      const expKwh = pyExportHistory[i] !== undefined ? parseFloat(pyExportHistory[i]) : 4.0;
+      const selfKwh = Math.max(0, solKwh - expKwh);
+
+      // Compute Daily cost of import = change in Base charge + change in Ft charge
+      let baseDiff = 0;
+      if (isTou) {
+        baseDiff = (bar.peak + bar.offpeak) - (prevBar.peak + prevBar.offpeak);
+      } else {
+        baseDiff = (bar.tier1 + bar.tier2 + bar.tier3) - (prevBar.tier1 + prevBar.tier2 + prevBar.tier3);
+      }
+      const ftDiff = bar.ft - prevBar.ft;
+      const impCost = Math.max(0, baseDiff + ftDiff);
+
+      // Compute daily solar financial benefit = (self consumed * retail rate) + (export * sellback rate)
+      const activeRetailRate = isTou
+        ? (0.40 * peakRate + 0.60 * offpeakRate)
+        : (bar.tier3 > 0 ? 4.4217 : (bar.tier2 > 0 ? 4.2218 : 3.2482));
+      const solBenefit = (selfKwh * activeRetailRate) + (expKwh * sellbackRate);
+
+      dailyBreakdown.push({
+        day: dayNum,
+        importKwh: impKwh,
+        solarKwh: solKwh,
+        importCost: impCost,
+        solarBenefit: solBenefit,
+        isPastOrToday: bar.isPastOrToday
+      });
+    }
 
     // Generate 30-Day Solar Multi-Trend Data from Python Historical Arrays
     const solcastTargetKwh = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 35.0;
@@ -324,6 +365,7 @@ class ThaiEnergyPanel extends HTMLElement {
       isTou: isTou,
       monthlyDailyBars: monthlyDailyBars,
       solarMonthlyTrends: solarMonthlyTrends,
+      dailyBreakdown: dailyBreakdown,
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: solcastForecastToday,
       solcastPowerNow: solcastPowerNow,
@@ -369,6 +411,17 @@ class ThaiEnergyPanel extends HTMLElement {
         const tab = e.currentTarget.getAttribute('data-tab');
         if (tab && tab !== this._activeTab) {
           this._switchTab(tab);
+        }
+      });
+    });
+
+    const toggleBtns = shadow.querySelectorAll('.toggle-btn');
+    toggleBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const mode = e.currentTarget.getAttribute('data-mode');
+        if (mode && mode !== this._dailyChartMode) {
+          this._dailyChartMode = mode;
+          this._initialRender();
         }
       });
     });
@@ -452,6 +505,72 @@ class ThaiEnergyPanel extends HTMLElement {
 
     const pointsExportPast = getPointsSegment(d.solarMonthlyTrends, 'export', 0, currentDay - 1);
     const pointsExportFuture = getPointsSegment(d.solarMonthlyTrends, 'export', currentDay - 1, 29);
+
+    // Daily Side-by-Side Bar Chart Calculations (Volume/Value Mode)
+    const mode = this._dailyChartMode;
+    const dailyData = d.dailyBreakdown;
+    
+    let maxVal = 1.0;
+    if (mode === 'kwh') {
+      maxVal = Math.max(1, ...dailyData.map(item => Math.max(item.importKwh, item.solarKwh)));
+    } else {
+      maxVal = Math.max(1, ...dailyData.map(item => Math.max(item.importCost, item.solarBenefit)));
+    }
+
+    const dailySvgH = 150;
+    const dailySvgW = 670; // adjusted to leave room for Y-axis labels
+    const colStepX = dailySvgW / 30.0;
+    const colW = 6;
+
+    const getDailyColY = (val) => (dailySvgH - ((val / maxVal) * (dailySvgH - 20))).toFixed(1);
+    const getDailyColHeight = (val) => (((val / maxVal) * (dailySvgH - 20))).toFixed(1);
+
+    const columnsHtml = dailyData.map((item, idx) => {
+      const xStart = idx * colStepX;
+      const xImp = (xStart + 2).toFixed(1);
+      const xSol = (xStart + 9).toFixed(1);
+      
+      const valImp = mode === 'kwh' ? item.importKwh : item.importCost;
+      const valSol = mode === 'kwh' ? item.solarKwh : item.solarBenefit;
+
+      const yImp = getDailyColY(valImp);
+      const hImp = getDailyColHeight(valImp);
+
+      const ySol = getDailyColY(valSol);
+      const hSol = getDailyColHeight(valSol);
+
+      const opacity = item.isPastOrToday ? '1.0' : '0.4';
+      const unitStr = mode === 'kwh' ? ' kWh' : ' THB';
+      const prefixStr = mode === 'thb' ? '฿' : '';
+
+      return `
+        <!-- Import Column (Blue) -->
+        <rect x="${xImp}" y="${yImp}" width="${colW}" height="${hImp}" fill="#2196f3" rx="2" opacity="${opacity}">
+          <title>Day ${item.day}: Grid Import ${prefixStr}${valImp.toFixed(2)}${unitStr}</title>
+        </rect>
+        
+        <!-- Solar Column (Green) -->
+        <rect x="${xSol}" y="${ySol}" width="${colW}" height="${hSol}" fill="#4caf50" rx="2" opacity="${opacity}">
+          <title>Day ${item.day}: Solar Yield ${prefixStr}${valSol.toFixed(2)}${unitStr}</title>
+        </rect>
+      `;
+    }).join('');
+
+    const dailyYAxisHtml = mode === 'kwh'
+      ? `
+          <span>${maxVal.toFixed(1)} kWh</span>
+          <span>${(maxVal * 0.75).toFixed(1)} kWh</span>
+          <span>${(maxVal * 0.50).toFixed(1)} kWh</span>
+          <span>${(maxVal * 0.25).toFixed(1)} kWh</span>
+          <span>0 kWh</span>
+        `
+      : `
+          <span>฿${maxVal.toFixed(1)}</span>
+          <span>฿${(maxVal * 0.75).toFixed(1)}</span>
+          <span>฿${(maxVal * 0.50).toFixed(1)}</span>
+          <span>฿${(maxVal * 0.25).toFixed(1)}</span>
+          <span>฿0</span>
+        `;
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -992,68 +1111,124 @@ class ThaiEnergyPanel extends HTMLElement {
                 <strong style="color: #64b5f6;">Tier 3</strong> (excess over 400 kWh).
               `}
             </div>
+          </div>
 
-            <!-- Diagnostics & Troubleshooting Panel -->
-            <div class="debug-panel">
-              <div class="debug-title">
-                <strong>🛠️ Thailand Energy Monitor - Real-Time Calibration & Diagnostic Hub</strong>
+          <!-- New Card: Daily Import vs Solar Comparison (Interactive Mode Toggle) -->
+          <div class="card full-width">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); padding-bottom: 10px; margin-bottom: 16px;">
+              <h2 style="border-bottom: none; padding-bottom: 0; margin: 0;">Daily Grid Import vs Solar Production</h2>
+              <div style="display: flex; gap: 6px;">
+                <button class="toggle-btn ${this._dailyChartMode === 'kwh' ? 'active' : ''}" data-mode="kwh" style="background-color: ${this._dailyChartMode === 'kwh' ? 'var(--primary-color, #03a9f4)' : 'rgba(255,255,255,0.05)'}; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 12px; font-size: 11px; cursor: pointer; outline: none; font-weight: 500;">
+                  Show Volume (kWh)
+                </button>
+                <button class="toggle-btn ${this._dailyChartMode === 'thb' ? 'active' : ''}" data-mode="thb" style="background-color: ${this._dailyChartMode === 'thb' ? 'var(--primary-color, #03a9f4)' : 'rgba(255,255,255,0.05)'}; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 12px; font-size: 11px; cursor: pointer; outline: none; font-weight: 500;">
+                  Show Value (THB)
+                </button>
               </div>
-              <div class="debug-grid">
-                <div class="debug-section">
-                  <h4>Grid Energy Import</h4>
-                  <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.importSensorId}</span></div>
-                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} ${d.importUnit}</span></div>
-                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.importBaseline} kWh</span></div>
-                  <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${d.importKwh} kWh</span></div>
-                </div>
+            </div>
 
-                <div class="debug-section">
-                  <h4>Solar Production</h4>
-                  <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.solarSensorId}</span></div>
-                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} ${d.solarUnit}</span></div>
-                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.solarBaseline} kWh</span></div>
-                  <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${d.solarKwh} kWh</span></div>
-                </div>
+            <div class="chart-wrapper">
+              <!-- Y-Axis Label Column -->
+              <div class="y-axis">
+                ${dailyYAxisHtml}
+              </div>
 
-                <div class="debug-section">
-                  <h4>Grid Energy Export</h4>
-                  <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.exportSensorId}</span></div>
-                  <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} ${d.exportUnit}</span></div>
-                  <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.exportBaseline} kWh</span></div>
-                  <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${d.exportKwh} kWh</span></div>
-                </div>
+              <!-- Side-by-Side Bar Chart SVG Container -->
+              <div class="svg-chart-container">
+                <svg viewBox="0 0 ${dailySvgW} ${dailySvgH}" preserveAspectRatio="none" style="width: 100%; height: 100%; overflow: visible;">
+                  <!-- Background Grid Lines -->
+                  <line x1="0" y1="0" x2="${dailySvgW}" y2="0" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                  <line x1="0" y1="32.5" x2="${dailySvgW}" y2="32.5" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                  <line x1="0" y1="65" x2="${dailySvgW}" y2="65" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                  <line x1="0" y1="97.5" x2="${dailySvgW}" y2="97.5" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
+                  <line x1="0" y1="130" x2="${dailySvgW}" y2="130" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4" />
 
-                <div class="debug-section">
-                  <h4>Temporal Calibration</h4>
-                  <div class="row"><span class="label">Billing Reset Day</span><span class="val">Day ${d.billingResetDay} of Month</span></div>
-                  <div class="row"><span class="label">Current Day of Cycle</span><span class="val">Day ${d.currentDayOfCycle} / 30</span></div>
-                  <div class="row"><span class="label">Active Window</span><span class="val highlight">${d.touStatus}</span></div>
-                </div>
+                  <!-- Side-by-Side SVG Bars -->
+                  ${columnsHtml}
+                </svg>
 
-                <!-- Additional User Configured Sensors Telemetry Section -->
-                <div class="debug-section" style="grid-column: 1 / -1; margin-top: 10px;">
-                  <h4 style="color: var(--warning-color, #ff9800);">Additional Configured Home Assistant Sensors</h4>
-                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 13px;">
-                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                      <strong>Grid Power Load</strong>
-                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.pm2230_total_active_power</span><span class="val highlight">${d.pm2230Power} ${d.pm2230PowerUnit}</span></div>
-                    </div>
-                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                      <strong>Solar Active Power</strong>
-                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.inverter_active_power</span><span class="val highlight">${d.inverterPower} ${d.inverterPowerUnit}</span></div>
-                    </div>
-                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                      <strong>Default Grid Import</strong>
-                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${d.defaultGridImport} kWh</span></div>
-                    </div>
-                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                      <strong>Default Solar Prod</strong>
-                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${d.defaultSolarProd} kWh</span></div>
-                    </div>
-                    <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                      <strong>Default Grid Export</strong>
-                      <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${d.defaultGridExport} kWh</span></div>
-                    </div>
+                <!-- X-Axis Labels (Days 1 to 30) -->
+                <div class="svg-x-axis-labels">
+                  <span>Day 1</span>
+                  <span>Day 5</span>
+                  <span>Day 10</span>
+                  <span>Day 15</span>
+                  <span>Day 20</span>
+                  <span>Day 25</span>
+                  <span>Day 30</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-legend" style="margin-top: 14px;">
+              <div class="legend-item"><div class="legend-dot" style="background-color: #2196f3;"></div> 1. Grid Import (${mode === 'kwh' ? 'Consumption Volume' : 'Incremental Cost'})</div>
+              <div class="legend-item"><div class="legend-dot" style="background-color: #4caf50;"></div> 2. Solar Production (${mode === 'kwh' ? 'Yield Volume' : 'Financial Benefit'})</div>
+              <div style="font-size: 11px; color: var(--secondary-text-color, #9e9e9e); margin-left: auto;">
+                (Hover over bars to view exact daily deltas)
+              </div>
+            </div>
+          </div>
+
+          <!-- Diagnostics & Troubleshooting Panel -->
+          <div class="debug-panel">
+            <div class="debug-title">
+              <strong>🛠️ Thailand Energy Monitor - Real-Time Calibration & Diagnostic Hub</strong>
+            </div>
+            <div class="debug-grid">
+              <div class="debug-section">
+                <h4>Grid Energy Import</h4>
+                <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.importSensorId}</span></div>
+                <div class="row"><span class="label">Current Reading</span><span class="val">${d.importCurrentReading} ${d.importUnit}</span></div>
+                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.importBaseline} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Import</span><span class="val saving">${d.importKwh} kWh</span></div>
+              </div>
+
+              <div class="debug-section">
+                <h4>Solar Production</h4>
+                <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.solarSensorId}</span></div>
+                <div class="row"><span class="label">Current Reading</span><span class="val">${d.solarCurrentReading} ${d.solarUnit}</span></div>
+                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.solarBaseline} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Solar</span><span class="val saving">${d.solarKwh} kWh</span></div>
+              </div>
+
+              <div class="debug-section">
+                <h4>Grid Energy Export</h4>
+                <div class="row"><span class="label">Configured Entity ID</span><span class="val">${d.exportSensorId}</span></div>
+                <div class="row"><span class="label">Current Reading</span><span class="val">${d.exportCurrentReading} ${d.exportUnit}</span></div>
+                <div class="row"><span class="label">Baseline (Month Start)</span><span class="val highlight">${d.exportBaseline} kWh</span></div>
+                <div class="row"><span class="label">This Month Net Export</span><span class="val saving">${d.exportKwh} kWh</span></div>
+              </div>
+
+              <div class="debug-section">
+                <h4>Temporal Calibration</h4>
+                <div class="row"><span class="label">Billing Reset Day</span><span class="val">Day ${d.billingResetDay} of Month</span></div>
+                <div class="row"><span class="label">Current Day of Cycle</span><span class="val">Day ${d.currentDayOfCycle} / 30</span></div>
+                <div class="row"><span class="label">Active Window</span><span class="val highlight">${d.touStatus}</span></div>
+              </div>
+
+              <!-- Additional User Configured Sensors Telemetry Section -->
+              <div class="debug-section" style="grid-column: 1 / -1; margin-top: 10px;">
+                <h4 style="color: var(--warning-color, #ff9800);">Additional Configured Home Assistant Sensors</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 13px;">
+                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                    <strong>Grid Power Load</strong>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.pm2230_total_active_power</span><span class="val highlight">${d.pm2230Power} ${d.pm2230PowerUnit}</span></div>
+                  </div>
+                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                    <strong>Solar Active Power</strong>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.inverter_active_power</span><span class="val highlight">${d.inverterPower} ${d.inverterPowerUnit}</span></div>
+                  </div>
+                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                    <strong>Default Grid Import</strong>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_import_kwh</span><span class="val">${d.defaultGridImport} kWh</span></div>
+                  </div>
+                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                    <strong>Default Solar Prod</strong>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.solar_production_energy</span><span class="val">${d.defaultSolarProd} kWh</span></div>
+                  </div>
+                  <div style="background-color: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                    <strong>Default Grid Export</strong>
+                    <div class="row" style="margin-top: 4px;"><span class="label">sensor.grid_export_kwh</span><span class="val">${d.defaultGridExport} kWh</span></div>
                   </div>
                 </div>
               </div>
@@ -1282,7 +1457,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.3.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.3.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 
