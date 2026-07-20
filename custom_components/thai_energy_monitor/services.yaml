@@ -1,0 +1,193 @@
+configure_settings:
+  name: Configure Energy & Tariff Settings
+  description: Save configuration parameters for utility provider, tariff categories, sensor IDs, Ft rates, sellback rates, and custom rate overrides.
+  fields:
+    utility_provider:
+      name: Utility Provider
+      description: "Electricity distribution authority (MEA or PEA)."
+      required: true
+      example: "MEA"
+      selector:
+        select:
+          options:
+            - "MEA"
+            - "PEA"
+    tariff_category:
+      name: Tariff Category
+      description: "Tariff classification category (1.1, 1.2, 1.3.1, 1.3.2)."
+      required: true
+      example: "1.2"
+      selector:
+        select:
+          options:
+            - "1.1"
+            - "1.2"
+            - "1.3.1"
+            - "1.3.2"
+    billing_day:
+      name: Billing Cycle Day
+      description: "Day of the month (1-31) on which the monthly electricity billing cycle resets."
+      required: true
+      example: 10
+      selector:
+        number:
+          min: 1
+          max: 31
+    grid_import_sensor:
+      name: Grid Energy Import Sensor ID
+      description: "Entity ID for grid energy consumption."
+      required: true
+      example: "sensor.power_meter_consumption"
+      selector:
+        entity:
+          domain: sensor
+    grid_export_sensor:
+      name: Grid Energy Export Sensor ID
+      description: "Entity ID for grid energy export."
+      required: true
+      example: "sensor.power_meter_exported"
+      selector:
+        entity:
+          domain: sensor
+    solar_prod_sensor:
+      name: Solar Production Sensor ID
+      description: "Entity ID for solar generation yield."
+      required: true
+      example: "sensor.inverter_total_yield"
+      selector:
+        entity:
+          domain: sensor
+    ft_rate:
+      name: Ft Rate (THB / kWh)
+      description: "Float Ft variable charge per kWh."
+      required: true
+      example: 0.3950
+      selector:
+        number:
+          min: -2.0
+          max: 5.0
+          step: 0.0001
+    solar_sellback_rate:
+      name: Solar Buy-Back Rate (THB / kWh)
+      description: "Solar export sellback tariff rate."
+      required: true
+      example: 2.20
+      selector:
+        number:
+          min: 0.0
+          max: 10.0
+          step: 0.01
+    mea_ebill_active:
+      name: MEA e-Bill Subscription
+      description: "Active MEA e-Bill discount status."
+      required: true
+      example: false
+      selector:
+        boolean: {}
+    mea_epayment_active:
+      name: MEA e-Payment Subscription
+      description: "Active MEA e-Payment discount status."
+      required: true
+      example: false
+      selector:
+        boolean: {}
+    custom_peak_rate:
+      name: Custom Peak Rate (THB / kWh)
+      description: "Optional custom TOU peak rate override."
+      required: false
+      example: 5.7982
+      selector:
+        number:
+          min: 0.0
+          max: 20.0
+          step: 0.0001
+    custom_offpeak_rate:
+      name: Custom Off-Peak Rate (THB / kWh)
+      description: "Optional custom TOU off-peak rate override."
+      required: false
+      example: 2.6369
+      selector:
+        number:
+          min: 0.0
+          max: 20.0
+          step: 0.0001
+    custom_tier1_rate:
+      name: Custom Tier 1 Rate (THB / kWh)
+      description: "Optional custom Tier 1 rate override."
+      required: false
+      example: 3.2484
+      selector:
+        number:
+          min: 0.0
+          max: 20.0
+          step: 0.0001
+    custom_tier2_rate:
+      name: Custom Tier 2 Rate (THB / kWh)
+      description: "Optional custom Tier 2 rate override."
+      required: false
+      example: 4.2233
+      selector:
+        number:
+          min: 0.0
+          max: 20.0
+          step: 0.0001
+    custom_tier3_rate:
+      name: Custom Tier 3 Rate (THB / kWh)
+      description: "Optional custom Tier 3 rate override."
+      required: false
+      example: 4.4217
+      selector:
+        number:
+          min: 0.0
+          max: 20.0
+          step: 0.0001
+
+configure_bess:
+  name: Configure BESS Battery Storage
+  description: Configure battery capacity, capex cost, grid charging, and tariff simulation models.
+  fields:
+    bess_capacity_kwh:
+      name: Battery Storage Capacity (kWh)
+      description: "Usable battery storage capacity in kWh."
+      required: true
+      example: 5.0
+      selector:
+        number:
+          min: 0.5
+          max: 100.0
+          step: 0.5
+    bess_capex_cost:
+      name: Battery CAPEX Cost (THB)
+      description: "Total capital expenditure cost for battery installation."
+      required: true
+      example: 50000.0
+      selector:
+        number:
+          min: 0.0
+          max: 1000000.0
+          step: 1000.0
+    bess_grid_charging:
+      name: Enable Grid Charging
+      description: "Allow battery to charge from grid during off-peak hours."
+      required: false
+      example: false
+      selector:
+        boolean: {}
+    bess_tariff_model:
+      name: Battery Tariff Model
+      description: "Tariff optimization strategy for battery simulation."
+      required: false
+      example: "tou"
+      selector:
+        select:
+          options:
+            - "tou"
+            - "normal"
+
+calculate_bess_lookback:
+  name: Run 12-Month BESS Battery Simulation
+  description: Performs a detailed 365-day historical simulation of battery energy storage shifting.
+
+calculate_12_month_lookback:
+  name: Run 12-Month Tariff Comparison Lookback
+  description: Compares 12 months of historical energy consumption under progressive vs. TOU tariffs.
