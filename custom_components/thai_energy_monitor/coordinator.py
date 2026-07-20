@@ -17,9 +17,7 @@ import math
 from typing import Any
 import zoneinfo
 
-import holidays
-
-from homeassistant.components.persistent_notification import async_create as async_create_notification
+from homeassistant.util import dt as dt_util
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.components.recorder.statistics import statistics_during_period
@@ -96,8 +94,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Active Tariff Category
         self.active_tariff_category: str = entry.data.get(CONF_TARIFF_CATEGORY, TARIFF_1_2)
 
-        # Thai Holiday Engine
-        self.th_holidays = holidays.TH()
+        # Thai Holiday Engine (loaded asynchronously in executor thread)
+        self.th_holidays: Any | None = None
 
         # Billing Cycle Baselines (Raw sensor readings at 00:00 on Billing Day)
         self.import_baseline_kwh: float | None = None
@@ -181,6 +179,37 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         async_track_state_change_event(
             self.hass, source_entities, self._async_sensor_state_listener
         )
+        await self.async_load_holidays()
+
+    async def async_load_holidays(self) -> None:
+        """Asynchronously load Thailand public holidays calendar in executor thread."""
+        def _load():
+            try:
+                import holidays
+                return holidays.TH()
+            except Exception as err:
+                _LOGGER.debug("Could not load Thailand holidays package: %s", err)
+                return None
+
+        self.th_holidays = await self.hass.async_add_executor_job(_load)
+
+    def _get_workday_state(self) -> str | None:
+        """Check Home Assistant Workday integration binary sensor state."""
+        if not self.hass:
+            return None
+
+        # Check standard Workday entity IDs
+        for entity_id in ("binary_sensor.workday_sensor", "binary_sensor.workday"):
+            st = self.hass.states.get(entity_id)
+            if st and st.state not in ("unavailable", "unknown"):
+                return st.state
+
+        # Search for any binary_sensor with 'workday' in name
+        for state in self.hass.states.async_all("binary_sensor"):
+            if "workday" in state.entity_id:
+                if state.state not in ("unavailable", "unknown"):
+                    return state.state
+        return None
 
     @callback
     def _async_sensor_state_listener(self, event: Event) -> None:
@@ -200,19 +229,35 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass.async_create_task(self.async_refresh())
 
     def is_tou_offpeak(self, dt: datetime) -> bool:
-        """Evaluate if datetime falls within TOU Off-Peak window in Thailand Standard Time."""
+        """Evaluate if datetime falls within TOU Off-Peak window in Thailand Standard Time.
+
+        Uses Home Assistant Workday integration if available, falling back to calendar rules.
+        """
         try:
             bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
             bkk_dt = dt.astimezone(bkk_tz)
         except Exception:
             bkk_dt = dt.astimezone(timezone(timedelta(hours=7)))
 
+        # 1. Check HA Workday Integration binary sensor (Highest Precedence)
+        workday_state = self._get_workday_state()
+        if workday_state is not None:
+            if workday_state == "off":
+                # Workday sensor is OFF -> Non-workday (weekend or public holiday) -> Always OFF-PEAK
+                return True
+            else:
+                # Workday sensor is ON -> Workday -> Off-peak only between 22:00 and 09:00
+                return bkk_dt.hour >= 22 or bkk_dt.hour < 9
+
+        # 2. Fallback: Weekend check (Saturday=5, Sunday=6)
         if bkk_dt.weekday() in (5, 6):
             return True
 
-        if bkk_dt.date() in self.th_holidays:
+        # 3. Fallback: Thailand Public Holidays calendar
+        if self.th_holidays and bkk_dt.date() in self.th_holidays:
             return True
 
+        # 4. Weekday Peak vs Off-Peak hours (09:00 - 22:00 is Peak)
         if bkk_dt.hour >= 22 or bkk_dt.hour < 9:
             return True
 
@@ -420,10 +465,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Determine if it's off-peak all day
         is_offpeak_all_day = is_weekend
-        if not is_offpeak_all_day:
+        if not is_offpeak_all_day and self.th_holidays:
             try:
-                th_holidays = holidays.Thailand()
-                is_offpeak_all_day = day_date in th_holidays
+                is_offpeak_all_day = day_date in self.th_holidays
             except Exception:
                 is_offpeak_all_day = False
 
