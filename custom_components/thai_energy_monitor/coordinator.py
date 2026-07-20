@@ -80,7 +80,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=60),
+            update_interval=timedelta(minutes=10),
         )
         self.entry = entry
         self.config_data = dict(entry.data)
