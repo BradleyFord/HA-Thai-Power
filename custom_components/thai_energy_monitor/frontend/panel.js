@@ -518,6 +518,13 @@ class ThaiEnergyPanel extends HTMLElement {
       }
     };
 
+    const setHtml = (id, html) => {
+      const el = shadow.getElementById(id);
+      if (el && el.innerHTML !== html) {
+        el.innerHTML = html;
+      }
+    };
+
     setText('val-tou-status', d.touStatus);
     setText('val-total-bill', `฿${d.totalBill}`);
     setText('val-base-cost', `฿${d.baseCost}`);
@@ -527,6 +534,18 @@ class ThaiEnergyPanel extends HTMLElement {
     setText('val-solar-benefit', `฿${d.totalSolarBenefit}`);
     setText('val-solar-savings', `฿${d.solarSavings}`);
     setText('val-solar-revenue', `฿${d.solarRevenue}`);
+
+    // Dynamic updates for Solar Net Billing ROI Breakdown Card
+    setText('val-solar-volume', `${d.solarKwh} kWh`);
+    setText('val-self-consumed-volume', `${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)`);
+    setText('val-grid-export-volume', `${d.exportKwh} kWh`);
+    setText('val-lifetime-benefit', `฿${d.lifetimeBenefit}`);
+
+    // Dynamic updates for Solcast Card
+    setHtml('val-solcast-today-main', `${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span>`);
+    setText('val-solcast-today', `${d.solcastForecastToday} kWh`);
+    setText('val-solcast-remaining', `${d.solcastForecastRemaining} kWh`);
+    setText('val-solcast-power', `${d.solcastPowerNow} ${d.solcastPowerNowUnit}`);
   }
 
   _initialRender() {
@@ -1395,26 +1414,26 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Total Solar Production Volume</span>
-                <span class="val">${d.solarKwh} kWh</span>
+                <span class="val" id="val-solar-volume">${d.solarKwh} kWh</span>
               </div>
               <div class="row">
                 <span class="label">Self-Consumed Volume</span>
-                <span class="val">${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)</span>
+                <span class="val" id="val-self-consumed-volume">${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)</span>
               </div>
               <div class="row">
                 <span class="label">Grid Export Volume</span>
-                <span class="val">${d.exportKwh} kWh</span>
+                <span class="val" id="val-grid-export-volume">${d.exportKwh} kWh</span>
               </div>
               <div class="row">
                 <span class="label">Lifetime Solar Net Benefit</span>
-                <span class="val saving">฿${d.lifetimeBenefit}</span>
+                <span class="val saving" id="val-lifetime-benefit">฿${d.lifetimeBenefit}</span>
               </div>
             </div>
           </div>
 
           <div class="card">
             <h2>Solcast PV Forecast Integration</h2>
-            <div class="metric-main highlight" style="color: var(--warning-color, #ff9800);">${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span></div>
+            <div class="metric-main highlight" id="val-solcast-today-main" style="color: var(--warning-color, #ff9800);">${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Solcast Integration Status</span>
@@ -1422,15 +1441,15 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Estimated Generation Today</span>
-                <span class="val">${d.solcastForecastToday} kWh</span>
+                <span class="val" id="val-solcast-today">${d.solcastForecastToday} kWh</span>
               </div>
               <div class="row">
                 <span class="label">Estimated Remaining Today</span>
-                <span class="val">${d.solcastForecastRemaining} kWh</span>
+                <span class="val" id="val-solcast-remaining">${d.solcastForecastRemaining} kWh</span>
               </div>
               <div class="row">
                 <span class="label">Current Estimated Power Output</span>
-                <span class="val">${d.solcastPowerNow} ${d.solcastPowerNowUnit}</span>
+                <span class="val" id="val-solcast-power">${d.solcastPowerNow} ${d.solcastPowerNowUnit}</span>
               </div>
             </div>
           </div>
@@ -1858,7 +1877,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.4 &bull; Home Assistant Custom Integration
       </div>
     `;
 

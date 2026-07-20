@@ -187,7 +187,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=1.5.3",
+                    "js_url": "/thai_energy_ui/panel.js?v=1.5.4",
                 }
             },
             require_admin=False,
