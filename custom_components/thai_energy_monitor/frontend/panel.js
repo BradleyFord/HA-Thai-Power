@@ -101,18 +101,27 @@ class ThaiEnergyPanel extends HTMLElement {
     let solcastPowerNow = '0.00';
     let solcastForecastRemaining = '0.00';
     let solcastEntityFound = false;
+    let solcastPowerUnit = 'kW';
 
     for (const entityId in states) {
       if (entityId.includes('solcast')) {
         solcastEntityFound = true;
-        if (entityId.includes('forecast_today') || entityId.includes('today')) {
-          solcastForecastToday = states[entityId].state;
-        } else if (entityId.includes('power_now') || entityId.includes('now')) {
-          solcastPowerNow = states[entityId].state;
-        } else if (entityId.includes('remaining_today') || entityId.includes('remaining')) {
+        if (entityId.includes('remaining')) {
           solcastForecastRemaining = states[entityId].state;
+        } else if (entityId.includes('today')) {
+          solcastForecastToday = states[entityId].state;
+        } else if (entityId.includes('now')) {
+          solcastPowerNow = states[entityId].state;
+          solcastPowerUnit = states[entityId].attributes?.unit_of_measurement || 'kW';
         }
       }
+    }
+
+    // Convert W to kW dynamically if the sensor reports in Watts (W)
+    let solcastPowerNowNum = parseFloat(solcastPowerNow) || 0;
+    if (solcastPowerUnit === 'W') {
+      solcastPowerNowNum = solcastPowerNowNum / 1000.0;
+      solcastPowerUnit = 'kW';
     }
 
     const isOffpeak = this._getIsOffpeak(states);
@@ -383,9 +392,10 @@ class ThaiEnergyPanel extends HTMLElement {
       meaEbillActive: getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active')).toLowerCase() === 'true',
       meaEpaymentActive: getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active')).toLowerCase() === 'true',
       solcastEntityFound: solcastEntityFound,
-      solcastForecastToday: solcastForecastToday,
-      solcastPowerNow: solcastPowerNow,
-      solcastForecastRemaining: solcastForecastRemaining,
+      solcastForecastToday: parseFloat(solcastForecastToday || 0).toFixed(2),
+      solcastPowerNow: solcastPowerNowNum.toFixed(2),
+      solcastPowerNowUnit: solcastPowerUnit,
+      solcastForecastRemaining: parseFloat(solcastForecastRemaining || 0).toFixed(2),
 
       // Debug Diagnostic Properties
       importSensorId: importSensorId,
@@ -1404,7 +1414,7 @@ class ThaiEnergyPanel extends HTMLElement {
 
           <div class="card">
             <h2>Solcast PV Forecast Integration</h2>
-            <div class="metric-main highlight" style="color: var(--warning-color, #ff9800);">${parseFloat(d.solcastForecastToday).toFixed(1)} <span style="font-size: 18px;">kWh</span></div>
+            <div class="metric-main highlight" style="color: var(--warning-color, #ff9800);">${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Solcast Integration Status</span>
@@ -1420,7 +1430,7 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Current Estimated Power Output</span>
-                <span class="val">${d.solcastPowerNow} kW</span>
+                <span class="val">${d.solcastPowerNow} ${d.solcastPowerNowUnit}</span>
               </div>
             </div>
           </div>
@@ -1848,7 +1858,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 
