@@ -67,6 +67,16 @@ class ThaiEnergyPanel extends HTMLElement {
     return false;
   }
 
+  _formatNum(val, maxDec = 2) {
+    if (val === null || val === undefined || val === '') return '0.00';
+    const num = parseFloat(val);
+    if (isNaN(num)) return val;
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: maxDec
+    });
+  }
+
   _extractData() {
     if (!this._hass) return;
 
@@ -526,11 +536,11 @@ class ThaiEnergyPanel extends HTMLElement {
     };
 
     setText('val-tou-status', d.touStatus);
-    setText('val-total-bill', `฿${d.totalBill}`);
-    setText('val-base-cost', `฿${d.baseCost}`);
-    setText('val-ft-charge', `฿${d.ftCharge}`);
-    setText('val-vat-amount', `฿${d.vatAmount}`);
-    setText('val-import-kwh', d.importKwh);
+    setText('val-total-bill', `฿${this._formatNum(d.totalBill)}`);
+    setText('val-base-cost', `฿${this._formatNum(d.baseCost)}`);
+    setText('val-ft-charge', `฿${this._formatNum(d.ftCharge)}`);
+    setText('val-vat-amount', `฿${this._formatNum(d.vatAmount)}`);
+    setText('val-import-kwh', this._formatNum(d.importKwh));
     setText('val-solar-benefit', `฿${d.totalSolarBenefit}`);
     setText('val-solar-savings', `฿${d.solarSavings}`);
     setText('val-solar-revenue', `฿${d.solarRevenue}`);
@@ -1108,31 +1118,30 @@ class ThaiEnergyPanel extends HTMLElement {
         <div class="grid">
           <div class="card">
             <h2>Current Monthly Estimated Bill <span>(THB)</span></h2>
-            <div class="metric-main" id="val-total-bill">฿${d.totalBill}</div>
+            <div class="metric-main" id="val-total-bill">฿${this._formatNum(d.totalBill)}</div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Base Energy Charge</span>
-                <span class="val" id="val-base-cost">฿${d.baseCost}</span>
+                <span class="val" id="val-base-cost">฿${this._formatNum(d.baseCost)}</span>
               </div>
               <div class="row">
                 <span class="label">Ft Charge (${d.ftRate} ฿/kWh)</span>
-                <span class="val" id="val-ft-charge">฿${d.ftCharge}</span>
+                <span class="val" id="val-ft-charge">฿${this._formatNum(d.ftCharge)}</span>
               </div>
               <div class="row">
                 <span class="label">Fixed Service Charge</span>
-                <span class="val">฿${d.serviceCharge}</span>
+                <span class="val">฿${this._formatNum(d.serviceCharge)}</span>
               </div>
               <div class="row">
                 <span class="label">Statutory VAT (7%)</span>
-                <span class="val" id="val-vat-amount">฿${d.vatAmount}</span>
+                <span class="val" id="val-vat-amount">฿${this._formatNum(d.vatAmount)}</span>
               </div>
-            </div>
             </div>
           </div>
 
           <div class="card">
             <h2>Detailed Consumption & Rates</h2>
-            <div class="metric-main" style="color: var(--primary-color, #03a9f4);"><span id="val-import-kwh">${d.importKwh}</span> <span style="font-size: 18px;">kWh</span></div>
+            <div class="metric-main" style="color: var(--primary-color, #03a9f4);"><span id="val-import-kwh">${this._formatNum(d.importKwh)}</span> <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">TOU Window Status</span>
@@ -1140,19 +1149,19 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
               <div class="row">
                 <span class="label">Active Marginal Retail Rate</span>
-                <span class="val">฿${d.marginalRate} / kWh</span>
+                <span class="val">฿${this._formatNum(d.marginalRate)} / kWh</span>
               </div>
               <div class="row">
                 <span class="label">HA Energy Dashboard Price Entity</span>
-                <span class="val">฿${d.gridPrice} / kWh</span>
+                <span class="val">฿${this._formatNum(d.gridPrice)} / kWh</span>
               </div>
               <div class="row">
                 <span class="label">Last Month Total Bill</span>
-                <span class="val">฿${d.lastMonthBill} (${d.lastMonthImport} kWh)</span>
+                <span class="val">฿${this._formatNum(d.lastMonthBill)} (${this._formatNum(d.lastMonthImport)} kWh)</span>
               </div>
               <div class="row">
                 <span class="label">Lifetime Grid Import Volume</span>
-                <span class="val">${d.lifetimeImport} kWh</span>
+                <span class="val">${this._formatNum(d.lifetimeImport)} kWh</span>
               </div>
             </div>
           </div>
@@ -1846,7 +1855,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.5 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.6 &bull; Home Assistant Custom Integration
       </div>
     `;
 
