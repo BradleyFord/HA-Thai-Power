@@ -543,11 +543,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:
             bkk_now = now
 
-        current_day = self.get_billing_cycle_day(now)
+        current_day = max(1, self.get_billing_cycle_day(now))
 
-        import_avg = max(0.1, self.monthly_import_kwh / current_day)
-        solar_avg = max(0.1, self.monthly_solar_kwh / current_day)
-        export_avg = max(0.0, self.monthly_export_kwh / current_day)
+        import_avg = max(10.0, self.monthly_import_kwh / current_day)
+        solar_avg = max(10.0, self.monthly_solar_kwh / current_day)
+        export_avg = max(1.0, self.monthly_export_kwh / current_day)
 
         start_dt = self._get_billing_start_datetime(now)
         end_dt = now
@@ -572,46 +572,52 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             import random
             random.seed(seed_str)  # deterministic random seed based on entity ID
 
-            # Start with a realistic, naturally fluctuating fallback
             res = []
-            for d in range(1, 31):
-                if d <= current_day:
-                    noise = random.uniform(0.7, 1.3)
-                    res.append(round(avg_val * noise, 3))
-                else:
-                    res.append(round(avg_val, 3))
+            start_date = start_dt.date()
 
-            # Query real stats
-            sensor_stats = stats.get(sensor_id)
-            if not sensor_stats:
-                return res
+            date_to_sum = {}
+            date_to_change = {}
 
+            sensor_stats = (stats.get(sensor_id) or []) if stats else []
             sorted_stats = sorted(sensor_stats, key=lambda x: x["start"])
-            
-            day_to_val = {}
+
             for entry in sorted_stats:
                 try:
                     entry_start = entry["start"]
                     local_dt = entry_start.astimezone(bkk_tz)
-                    day_num = local_dt.day
+                    d_key = local_dt.date()
+
+                    sum_change = entry.get("sum_change")
+                    if sum_change is not None and sum_change >= 0:
+                        date_to_change[d_key] = date_to_change.get(d_key, 0.0) + float(sum_change)
+
                     val = entry.get("sum") if entry.get("sum") is not None else entry.get("state")
                     if val is not None:
-                        day_to_val[day_num] = float(val)
+                        date_to_sum[d_key] = float(val)
                 except Exception:
                     continue
 
-            # Compute daily delta
-            for d in range(1, 31):
-                if d <= current_day:
-                    val_curr = day_to_val.get(d)
-                    val_prev = day_to_val.get(d - 1)
-                    
-                    if val_curr is not None:
-                        if val_prev is not None:
-                            delta = max(0.0, val_curr - val_prev)
+            for idx in range(30):
+                d_date = start_date + timedelta(days=idx)
+                prev_date = start_date + timedelta(days=idx - 1)
+
+                if idx + 1 <= current_day:
+                    if d_date in date_to_change and date_to_change[d_date] > 0:
+                        res.append(round(date_to_change[d_date], 3))
+                    elif d_date in date_to_sum:
+                        val_curr = date_to_sum[d_date]
+                        val_prev = date_to_sum.get(prev_date)
+                        if val_prev is not None and val_curr >= val_prev:
+                            delta = val_curr - val_prev
                         else:
                             delta = avg_val * random.uniform(0.85, 1.15)
-                        res[d - 1] = round(delta, 3)
+                        res.append(round(delta, 3))
+                    else:
+                        noise = random.uniform(0.8, 1.2)
+                        res.append(round(avg_val * noise, 3))
+                else:
+                    noise = random.uniform(0.9, 1.1)
+                    res.append(round(avg_val * noise, 3))
 
             return res
 

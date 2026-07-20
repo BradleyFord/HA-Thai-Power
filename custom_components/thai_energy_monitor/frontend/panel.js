@@ -1310,10 +1310,10 @@ class ThaiEnergyPanel extends HTMLElement {
             <div class="chart-wrapper">
               <!-- Y-Axis Label Column -->
               <div class="y-axis">
-                <span>฿${yTick4}</span>
-                <span>฿${yTick3}</span>
-                <span>฿${yTick2}</span>
-                <span>฿${yTick1}</span>
+                <span>฿${this._formatNum(yTick4, 0)}</span>
+                <span>฿${this._formatNum(yTick3, 0)}</span>
+                <span>฿${this._formatNum(yTick2, 0)}</span>
+                <span>฿${this._formatNum(yTick1, 0)}</span>
                 <span>฿0</span>
               </div>
 
@@ -2091,7 +2091,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.7.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.7.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 
