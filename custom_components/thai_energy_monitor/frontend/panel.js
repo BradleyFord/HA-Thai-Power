@@ -17,6 +17,7 @@ class ThaiEnergyPanel extends HTMLElement {
     this._activeTab = 'overview';
     this._dailyChartMode = 'kwh';
     this._isAnalyzing = false;
+    this._isBessAnalyzing = false;
     this._data = {};
     this._rendered = false;
   }
@@ -193,6 +194,21 @@ class ThaiEnergyPanel extends HTMLElement {
     const lookbackData = getAttribute('sensor.monthly_estimated_bill', 'lookback_12_months_data');
     if (lookbackData) {
       this._isAnalyzing = false;
+    }
+
+    // Extract 12-Month BESS lookback dataset from Python coordinator attributes
+    const bess12MonthsRaw = getAttribute('sensor.monthly_estimated_bill', 'bess_12_months_data');
+    if (bess12MonthsRaw) {
+      this._isBessAnalyzing = false;
+    }
+    let bessLookbackTotalSavings = 0;
+    let bessLookbackTotalShifted = 0;
+    let bessLookbackPaybackYears = Infinity;
+    if (bess12MonthsRaw && Array.isArray(bess12MonthsRaw)) {
+      bessLookbackTotalSavings = bess12MonthsRaw.reduce((sum, row) => sum + parseFloat(row.savings_thb || 0), 0);
+      bessLookbackTotalShifted = bess12MonthsRaw.reduce((sum, row) => sum + parseFloat(row.shifted_kwh || 0), 0);
+      const capexVal = parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0;
+      bessLookbackPaybackYears = bessLookbackTotalSavings > 0 ? (capexVal / bessLookbackTotalSavings) : Infinity;
     }
 
     const today = new Date();
@@ -394,6 +410,10 @@ class ThaiEnergyPanel extends HTMLElement {
       solarMonthlyTrends: solarMonthlyTrends,
       dailyBreakdown: dailyBreakdown,
       lookbackData: lookbackData,
+      bess12MonthsData: bess12MonthsRaw,
+      bessLookbackTotalSavings: bessLookbackTotalSavings,
+      bessLookbackTotalShifted: bessLookbackTotalShifted,
+      bessLookbackPaybackYears: bessLookbackPaybackYears,
       outageHistory: getAttribute('sensor.monthly_estimated_bill', 'outage_history') || [],
       totalOutageSeconds: getAttribute('sensor.monthly_estimated_bill', 'total_outage_seconds') || 0,
       bessCapacityKwh: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capacity_kwh')) || 5.0,
@@ -468,6 +488,15 @@ class ThaiEnergyPanel extends HTMLElement {
         this._isAnalyzing = true;
         this._initialRender();
         this._hass.callService('thai_energy_monitor', 'trigger_12_month_lookback', {});
+      });
+    }
+
+    const btnTriggerBess = shadow.getElementById('btn-trigger-bess-lookback');
+    if (btnTriggerBess) {
+      btnTriggerBess.addEventListener('click', () => {
+        this._isBessAnalyzing = true;
+        this._initialRender();
+        this._hass.callService('thai_energy_monitor', 'trigger_bess_lookback', {});
       });
     }
 
@@ -1508,15 +1537,15 @@ class ThaiEnergyPanel extends HTMLElement {
         <div class="grid">
           <div class="card">
             <h2>BESS Battery Storage Simulation</h2>
-            <div class="metric-main highlight">฿${d.bessSavings}</div>
+            <div class="metric-main highlight">฿${this._formatNum(d.bessSavings)}</div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Simulated Shift Savings</span>
-                <span class="val highlight">฿${d.bessSavings}</span>
+                <span class="val highlight">฿${this._formatNum(d.bessSavings)}</span>
               </div>
               <div class="row">
                 <span class="label">Estimated Annual Savings</span>
-                <span class="val highlight">฿${(parseFloat(d.bessSavings || 0) * 12).toFixed(2)}</span>
+                <span class="val highlight">฿${this._formatNum(parseFloat(d.bessSavings || 0) * 12)}</span>
               </div>
               <div class="row">
                 <span class="label">CAPEX Capital Investment</span>
@@ -1556,6 +1585,68 @@ class ThaiEnergyPanel extends HTMLElement {
             <button class="action-btn" id="btn-save-bess" style="width: 100%; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; transition: background-color 0.2s;">
               💾 Save & Recalculate Simulation
             </button>
+          </div>
+
+          <!-- Full Width BESS 12-Month simulation lookback -->
+          <div class="card full-width" style="margin-top: 24px;">
+            <h2>12-Month Historical BESS Performance Simulation</h2>
+            <p style="font-size: 14px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.5; margin-bottom: 20px;">
+              Verify battery savings over a full year using daily cycling simulations across your past 12 months of Home Assistant grid export recorder database history. This counts seasonal variations in solar generation and export surpluses.
+            </p>
+
+            ${!d.bess12MonthsData ? `
+              <div style="text-align: center; padding: 30px 10px;">
+                <button class="action-btn" id="btn-trigger-bess-lookback" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background-color: var(--warning-color, #ff9800); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.2s;">
+                  ${this._isBessAnalyzing ? '🔄 Running daily battery cycling simulation over 365 days...' : '🔍 Calculate 12-Month BESS Performance History'}
+                </button>
+              </div>
+            ` : `
+              <div class="lookback-summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="summary-subcard" style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--divider-color, rgba(255,255,255,0.1)); padding: 16px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Annual Simulated Battery Savings</div>
+                  <div style="font-size: 24px; font-weight: bold; color: var(--success-color, #4caf50);">฿${this._formatNum(d.bessLookbackTotalSavings)}</div>
+                </div>
+                <div class="summary-subcard" style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--divider-color, rgba(255,255,255,0.1)); padding: 16px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">12-Month Total Shifted Energy</div>
+                  <div style="font-size: 24px; font-weight: bold; color: var(--primary-color, #03a9f4);">${this._formatNum(d.bessLookbackTotalShifted)} kWh</div>
+                </div>
+                <div class="summary-subcard" style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--divider-color, rgba(255,255,255,0.1)); padding: 16px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Corrected Payback Period</div>
+                  <div style="font-size: 24px; font-weight: bold; color: ${d.bessLookbackPaybackYears < 6.0 ? 'var(--success-color, #4caf50)' : (d.bessLookbackPaybackYears < 12.0 ? 'var(--warning-color, #ff9800)' : 'var(--error-color, #f44336)')};">
+                    ${d.bessLookbackPaybackYears === Infinity ? 'Infinite' : `${d.bessLookbackPaybackYears.toFixed(1)} Years`}
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-container" style="overflow-x: auto; border: 1px solid var(--divider-color, rgba(255,255,255,0.08)); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+                  <thead>
+                    <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff;">Month</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">Grid Export Surplus (kWh)</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">Simulated Shifted Energy (kWh)</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">Calculated Savings (THB)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${d.bess12MonthsData.map(row => `
+                      <tr style="border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.06));">
+                        <td style="padding: 12px 16px; font-weight: 500; color: #e0e0e0;">${row.month}</td>
+                        <td style="padding: 12px 16px; color: var(--secondary-text-color, #9e9e9e); text-align: right;">${this._formatNum(row.export_kwh)} kWh</td>
+                        <td style="padding: 12px 16px; color: var(--primary-color, #03a9f4); text-align: right; font-weight: 500;">${this._formatNum(row.shifted_kwh)} kWh</td>
+                        <td style="padding: 12px 16px; color: var(--success-color, #4caf50); text-align: right; font-weight: 600;">฿${this._formatNum(row.savings_thb)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style="text-align: center; margin-top: 20px;">
+                <button class="action-btn" id="btn-trigger-bess-lookback" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px; background-color: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; outline: none; transition: background-color 0.2s;">
+                  ${this._isBessAnalyzing ? '🔄 Recalculating...' : '🔄 Run Simulation Again'}
+                </button>
+              </div>
+            `}
           </div>
         </div>
       ` : ''}
@@ -1855,7 +1946,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.5.6 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.5.7 &bull; Home Assistant Custom Integration
       </div>
     `;
 

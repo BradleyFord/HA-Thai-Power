@@ -199,6 +199,7 @@ class ThaiEnergyCostSensor(
             "daily_solar_kwh_history": self.coordinator.data.get("daily_solar_kwh_history"),
             "daily_export_kwh_history": self.coordinator.data.get("daily_export_kwh_history"),
             "lookback_12_months_data": getattr(self.coordinator, "lookback_12_months_data", None),
+            "bess_12_months_data": getattr(self.coordinator, "bess_12_months_data", None),
             "outage_history": self.coordinator.data.get("outage_history"),
             "total_outage_seconds": self.coordinator.data.get("total_outage_seconds"),
             "bess_capacity_kwh": self.coordinator.data.get("bess_capacity_kwh") or self.coordinator.config_data.get("bess_capacity_kwh", 5.0),
