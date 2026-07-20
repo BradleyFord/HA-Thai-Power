@@ -1010,8 +1010,11 @@ class ThaiEnergyPanel extends HTMLElement {
         <button class="tab-btn ${this._activeTab === 'predictive' ? 'active' : ''}" data-tab="predictive">
           Tariff Optimizer
         </button>
-        <button class="tab-btn ${this._activeTab === 'reliability' ? 'active' : ''}" data-tab="reliability">
-          Rewards & Outages
+        <button class="tab-btn ${this._activeTab === 'rewards' ? 'active' : ''}" data-tab="rewards">
+          MEA Rewards
+        </button>
+        <button class="tab-btn ${this._activeTab === 'outages' ? 'active' : ''}" data-tab="outages">
+          Grid Outages
         </button>
       </div>
 
@@ -1579,10 +1582,10 @@ class ThaiEnergyPanel extends HTMLElement {
         </div>
       ` : ''}
 
-      <!-- Tab 4: Detailed Rewards & Outages -->
-      ${this._activeTab === 'reliability' ? `
+      <!-- Tab 4: MEA Rewards -->
+      ${this._activeTab === 'rewards' ? `
         <div class="grid">
-          <div class="card">
+          <div class="card full-width">
             <h2>MEA Rewards Gamification</h2>
             <div class="metric-main accent">${d.meaPoints} <span style="font-size: 20px;">Points</span></div>
             <div class="table-rows">
@@ -1603,8 +1606,13 @@ class ThaiEnergyPanel extends HTMLElement {
               Call Home Assistant service <code>thai_energy_monitor.adjust_mea_points</code> to redeem or adjust points when used.
             </div>
           </div>
+        </div>
+      ` : ''}
 
-          <div class="card">
+      <!-- Tab 5: Grid Outages -->
+      ${this._activeTab === 'outages' ? `
+        <div class="grid">
+          <div class="card full-width">
             <h2>Grid Outage & Reliability History</h2>
             <div class="metric-main warning">${d.outageCount} <span style="font-size: 20px; font-weight: 500;">Incidents</span></div>
             <div class="table-rows" style="margin-bottom: 20px;">
@@ -1622,23 +1630,23 @@ class ThaiEnergyPanel extends HTMLElement {
               </div>
             </div>
 
-            <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 14px; font-weight: 500; color: #fff;">Outage Log Book</h3>
+            <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 15px; font-weight: 500; color: #fff;">Outage Log Book</h3>
             ${d.outageHistory && d.outageHistory.length > 0 ? `
               <div style="overflow-x: auto; background-color: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; color: var(--primary-text-color, #fff);">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; color: var(--primary-text-color, #fff);">
                   <thead>
                     <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
-                      <th style="padding: 8px 12px; font-weight: 600; color: #9e9e9e;">Start Time</th>
-                      <th style="padding: 8px 12px; font-weight: 600; color: #9e9e9e;">End Time</th>
-                      <th style="padding: 8px 12px; font-weight: 600; color: #9e9e9e;">Duration</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Start Time</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">End Time</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Duration</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${d.outageHistory.map(row => `
                       <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                        <td style="padding: 8px 12px;">${row.start}</td>
-                        <td style="padding: 8px 12px;">${row.end}</td>
-                        <td style="padding: 8px 12px; font-weight: 600; color: var(--error-color, #f44336);">${row.duration}</td>
+                        <td style="padding: 10px 14px;">${row.start}</td>
+                        <td style="padding: 10px 14px;">${row.end}</td>
+                        <td style="padding: 10px 14px; font-weight: 600; color: var(--error-color, #f44336);">${row.duration}</td>
                       </tr>
                     `).join('')}
                   </tbody>
@@ -1654,7 +1662,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.4.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.4.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 
