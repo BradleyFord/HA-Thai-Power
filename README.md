@@ -43,4 +43,4 @@ A custom Home Assistant integration designed to monitor, calculate, and forecast
 ---
 
 ## License
-MIT License
+GNU GPLv3 License
