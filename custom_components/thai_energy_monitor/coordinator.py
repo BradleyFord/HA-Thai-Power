@@ -563,7 +563,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 stat_ids,
                 "day",
                 None,
-                {"sum", "state"}
+                {"sum", "state", "max", "mean"}
             )
         except Exception as err:
             _LOGGER.debug("Could not query recorder statistics: %s", err)
@@ -591,26 +591,41 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if sum_change is not None and sum_change >= 0:
                         date_to_change[d_key] = date_to_change.get(d_key, 0.0) + float(sum_change)
 
-                    val = entry.get("sum") if entry.get("sum") is not None else entry.get("state")
+                    val = entry.get("sum")
+                    if val is None:
+                        val = entry.get("max")
+                    if val is None:
+                        val = entry.get("state")
+                    if val is None:
+                        val = entry.get("mean")
+
                     if val is not None:
                         date_to_sum[d_key] = float(val)
                 except Exception:
                     continue
+
+            # Check if this sensor is a lifetime cumulative sensor
+            max_state = max(date_to_sum.values()) if date_to_sum else 0.0
+            is_lifetime_sensor = max_state > 500.0
 
             for idx in range(30):
                 d_date = start_date + timedelta(days=idx)
                 prev_date = start_date + timedelta(days=idx - 1)
 
                 if idx + 1 <= current_day:
-                    if d_date in date_to_change and date_to_change[d_date] > 0:
+                    if d_date in date_to_change and date_to_change[d_date] > 0.01:
                         res.append(round(date_to_change[d_date], 3))
                     elif d_date in date_to_sum:
                         val_curr = date_to_sum[d_date]
-                        val_prev = date_to_sum.get(prev_date)
-                        if val_prev is not None and val_curr >= val_prev:
-                            delta = val_curr - val_prev
+                        if is_lifetime_sensor:
+                            val_prev = date_to_sum.get(prev_date)
+                            if val_prev is not None and val_curr >= val_prev:
+                                delta = val_curr - val_prev
+                            else:
+                                delta = avg_val * random.uniform(0.85, 1.15)
                         else:
-                            delta = avg_val * random.uniform(0.85, 1.15)
+                            # Daily resetting sensor: max state value is the daily consumption
+                            delta = val_curr
                         res.append(round(delta, 3))
                     else:
                         noise = random.uniform(0.8, 1.2)
