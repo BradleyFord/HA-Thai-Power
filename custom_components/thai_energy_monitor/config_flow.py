@@ -91,13 +91,13 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_BILLING_DAY, default=1
                 ): selector({"number": {"min": 1, "max": 31, "step": 1, "mode": "box"}}),
                 vol.Required(CONF_GRID_IMPORT_SENSOR): selector({
-                    "entity": {"filter": {"domain": "sensor", "device_class": "energy"}}
+                    "entity": {"domain": "sensor", "device_class": "energy"}
                 }),
                 vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({
-                    "entity": {"filter": {"domain": "sensor", "device_class": "energy"}}
+                    "entity": {"domain": "sensor", "device_class": "energy"}
                 }),
                 vol.Required(CONF_SOLAR_PROD_SENSOR): selector({
-                    "entity": {"filter": {"domain": "sensor", "device_class": "energy"}}
+                    "entity": {"domain": "sensor", "device_class": "energy"}
                 }),
             }
         )
@@ -153,13 +153,13 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         options_schema = vol.Schema(
             {
                 vol.Required(CONF_GRID_IMPORT_SENSOR): selector({
-                    "entity": {"filter": {"domain": "sensor", "device_class": "energy"}}
+                    "entity": {"domain": "sensor", "device_class": "energy"}
                 }),
                 vol.Optional(CONF_GRID_EXPORT_SENSOR): selector({
-                    "entity": {"filter": {"domain": "sensor", "device_class": "energy"}}
+                    "entity": {"domain": "sensor", "device_class": "energy"}
                 }),
                 vol.Required(CONF_SOLAR_PROD_SENSOR): selector({
-                    "entity": {"filter": {"domain": "sensor", "device_class": "energy"}}
+                    "entity": {"domain": "sensor", "device_class": "energy"}
                 }),
                 vol.Required(CONF_TARIFF_CATEGORY): selector({
                     "select": {
