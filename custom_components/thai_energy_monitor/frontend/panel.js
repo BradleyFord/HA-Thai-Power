@@ -55,7 +55,14 @@ class ThaiEnergyPanel extends HTMLElement {
 
   _getIsOffpeak(states) {
     if (!states) return false;
-    const billSensor = states['sensor.monthly_estimated_bill'];
+    let billEntityId = 'sensor.monthly_estimated_bill';
+    for (const entityId in states) {
+      if (entityId.endsWith('monthly_estimated_bill')) {
+        billEntityId = entityId;
+        break;
+      }
+    }
+    const billSensor = states[billEntityId];
     if (billSensor && billSensor.attributes) {
       if (billSensor.attributes.tou_status) {
         return String(billSensor.attributes.tou_status).toLowerCase().includes('off');
@@ -151,22 +158,31 @@ class ThaiEnergyPanel extends HTMLElement {
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
+    // Dynamically locate the estimated bill entity ID to support custom names/device prefixes
+    let billEntityId = 'sensor.monthly_estimated_bill';
+    for (const entityId in states) {
+      if (entityId.endsWith('monthly_estimated_bill')) {
+        billEntityId = entityId;
+        break;
+      }
+    }
+
     // Map exact sensor names with multi-alias fallbacks & coordinator attribute resolution
-    const importKwh = getEntityState('sensor.monthly_grid_import_energy') || getEntityState('sensor.monthly_import_kwh') || getAttribute('sensor.monthly_estimated_bill', 'monthly_import_kwh') || '0.00';
-    const exportKwh = getEntityState('sensor.monthly_grid_export_energy') || getEntityState('sensor.monthly_export_kwh') || getAttribute('sensor.monthly_estimated_bill', 'monthly_export_kwh') || '0.00';
-    const solarKwh = getEntityState('sensor.monthly_solar_production_energy') || getEntityState('sensor.monthly_solar_kwh') || getAttribute('sensor.monthly_estimated_bill', 'monthly_solar_kwh') || '0.00';
+    const importKwh = getEntityState('sensor.monthly_grid_import_energy') || getEntityState('sensor.monthly_import_kwh') || getAttribute(billEntityId, 'monthly_import_kwh') || '0.00';
+    const exportKwh = getEntityState('sensor.monthly_grid_export_energy') || getEntityState('sensor.monthly_export_kwh') || getAttribute(billEntityId, 'monthly_export_kwh') || '0.00';
+    const solarKwh = getEntityState('sensor.monthly_solar_production_energy') || getEntityState('sensor.monthly_solar_kwh') || getAttribute(billEntityId, 'monthly_solar_kwh') || '0.00';
 
-    const accruedBill = getEntityState('sensor.monthly_accrued_bill_to_date') || getEntityState('sensor.monthly_accrued_bill') || getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_bill') || '0.00';
-    const accruedBaseCost = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_base_cost') || '0.00';
-    const accruedFtCharge = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_ft_charge') || '0.00';
-    const accruedVatAmount = getAttribute('sensor.monthly_estimated_bill', 'monthly_accrued_vat_amount') || '0.00';
-    const projectedImport = getAttribute('sensor.monthly_estimated_bill', 'projected_monthly_import') || '0.00';
+    const accruedBill = getEntityState('sensor.monthly_accrued_bill_to_date') || getEntityState('sensor.monthly_accrued_bill') || getAttribute(billEntityId, 'monthly_accrued_bill') || '0.00';
+    const accruedBaseCost = getAttribute(billEntityId, 'monthly_accrued_base_cost') || '0.00';
+    const accruedFtCharge = getAttribute(billEntityId, 'monthly_accrued_ft_charge') || '0.00';
+    const accruedVatAmount = getAttribute(billEntityId, 'monthly_accrued_vat_amount') || '0.00';
+    const projectedImport = getAttribute(billEntityId, 'projected_monthly_import') || '0.00';
 
-    const totalBill = getEntityState('sensor.monthly_estimated_bill') || getAttribute('sensor.monthly_estimated_bill', 'monthly_estimated_bill') || '0.00';
-    const baseCost = getEntityState('sensor.monthly_base_energy_cost') || getEntityState('sensor.monthly_base_cost') || getAttribute('sensor.monthly_estimated_bill', 'monthly_base_cost') || '0.00';
-    const ftCharge = getEntityState('sensor.monthly_ft_charge') || getAttribute('sensor.monthly_estimated_bill', 'monthly_ft_charge') || '0.00';
-    const serviceCharge = getEntityState('sensor.monthly_fixed_service_charge') || getEntityState('sensor.monthly_service_charge') || getAttribute('sensor.monthly_estimated_bill', 'monthly_service_charge') || '38.22';
-    const vatAmount = getEntityState('sensor.monthly_calculated_vat_7') || getEntityState('sensor.monthly_vat_amount') || getAttribute('sensor.monthly_estimated_bill', 'monthly_vat_amount') || '0.00';
+    const totalBill = getEntityState(billEntityId) || getAttribute(billEntityId, 'monthly_estimated_bill') || '0.00';
+    const baseCost = getEntityState('sensor.monthly_base_energy_cost') || getEntityState('sensor.monthly_base_cost') || getAttribute(billEntityId, 'monthly_base_cost') || '0.00';
+    const ftCharge = getEntityState('sensor.monthly_ft_charge') || getAttribute(billEntityId, 'monthly_ft_charge') || '0.00';
+    const serviceCharge = getEntityState('sensor.monthly_fixed_service_charge') || getEntityState('sensor.monthly_service_charge') || getAttribute(billEntityId, 'monthly_service_charge') || '38.22';
+    const vatAmount = getEntityState('sensor.monthly_calculated_vat_7') || getEntityState('sensor.monthly_vat_amount') || getAttribute(billEntityId, 'monthly_vat_amount') || '0.00';
 
     const solarKwhNum = parseFloat(solarKwh) || 0;
     const exportKwhNum = parseFloat(exportKwh) || 0;
@@ -179,13 +195,13 @@ class ThaiEnergyPanel extends HTMLElement {
     const vatPct = Math.min(100, Math.round(((parseFloat(vatAmount) || 0) / totalBillNum) * 100));
 
     // Extract Baseline Variables for Debug Diagnostic Panel
-    const importSensorId = getAttribute('sensor.monthly_estimated_bill', 'import_sensor_id') || 'sensor.power_meter_consumption';
-    const exportSensorId = getAttribute('sensor.monthly_estimated_bill', 'export_sensor_id') || 'sensor.power_meter_exported';
-    const solarSensorId = getAttribute('sensor.monthly_estimated_bill', 'solar_sensor_id') || 'sensor.inverter_total_yield';
+    const importSensorId = getAttribute(billEntityId, 'import_sensor_id') || 'sensor.power_meter_consumption';
+    const exportSensorId = getAttribute(billEntityId, 'export_sensor_id') || 'sensor.power_meter_exported';
+    const solarSensorId = getAttribute(billEntityId, 'solar_sensor_id') || 'sensor.inverter_total_yield';
 
-    const importBaseline = getAttribute('sensor.monthly_estimated_bill', 'import_baseline_kwh');
-    const solarBaseline = getAttribute('sensor.monthly_estimated_bill', 'solar_baseline_kwh');
-    const exportBaseline = getAttribute('sensor.monthly_estimated_bill', 'export_baseline_kwh');
+    const importBaseline = getAttribute(billEntityId, 'import_baseline_kwh');
+    const solarBaseline = getAttribute(billEntityId, 'solar_baseline_kwh');
+    const exportBaseline = getAttribute(billEntityId, 'export_baseline_kwh');
 
     const importCurrentReading = getEntityState(importSensorId);
     const solarCurrentReading = getEntityState(solarSensorId);
@@ -206,18 +222,18 @@ class ThaiEnergyPanel extends HTMLElement {
     const inverterPowerUnit = getUnit('sensor.inverter_active_power', 'W');
 
     // Extract 30-Day Historical Arrays from Python Coordinator Attributes
-    const pyImportHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_import_kwh_history') || [];
-    const pySolarHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_solar_kwh_history') || [];
-    const pyExportHistory = getAttribute('sensor.monthly_estimated_bill', 'daily_export_kwh_history') || [];
+    const pyImportHistory = getAttribute(billEntityId, 'daily_import_kwh_history') || [];
+    const pySolarHistory = getAttribute(billEntityId, 'daily_solar_kwh_history') || [];
+    const pyExportHistory = getAttribute(billEntityId, 'daily_export_kwh_history') || [];
 
     // Extract 12-Month lookback dataset from Python coordinator attributes
-    const lookbackData = getAttribute('sensor.monthly_estimated_bill', 'lookback_12_months_data');
+    const lookbackData = getAttribute(billEntityId, 'lookback_12_months_data');
     if (lookbackData) {
       this._isAnalyzing = false;
     }
 
     // Extract 12-Month BESS lookback dataset from Python coordinator attributes
-    const bess12MonthsRaw = getAttribute('sensor.monthly_estimated_bill', 'bess_12_months_data');
+    const bess12MonthsRaw = getAttribute(billEntityId, 'bess_12_months_data');
     if (bess12MonthsRaw) {
       this._isBessAnalyzing = false;
     }
@@ -227,19 +243,19 @@ class ThaiEnergyPanel extends HTMLElement {
     if (bess12MonthsRaw && Array.isArray(bess12MonthsRaw)) {
       bessLookbackTotalSavings = bess12MonthsRaw.reduce((sum, row) => sum + parseFloat(row.savings_thb || 0), 0);
       bessLookbackTotalShifted = bess12MonthsRaw.reduce((sum, row) => sum + parseFloat(row.shifted_kwh || 0), 0);
-      const capexVal = parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0;
+      const capexVal = parseFloat(getAttribute(billEntityId, 'bess_capex_cost')) || 50000.0;
       bessLookbackPaybackYears = bessLookbackTotalSavings > 0 ? (capexVal / bessLookbackTotalSavings) : Infinity;
     }
 
     const today = new Date();
-    const currentDay = parseInt(getAttribute('sensor.monthly_estimated_bill', 'current_day_of_cycle')) || Math.min(30, Math.max(1, today.getDate()));
+    const currentDay = parseInt(getAttribute(billEntityId, 'current_day_of_cycle')) || Math.min(30, Math.max(1, today.getDate()));
     const totalBaseNum = parseFloat(baseCost) || 0;
     const totalFtNum = parseFloat(ftCharge) || 0;
     const totalServiceNum = parseFloat(serviceCharge) || 38.22;
     const totalVatNum = parseFloat(vatAmount) || 0;
-    const ftRate = getAttribute('sensor.monthly_estimated_bill', 'ft_rate') || 0.395;
-    const tariffCategory = getAttribute('sensor.monthly_estimated_bill', 'tariff_category') || '1.2';
-    const sellbackRate = getAttribute('sensor.monthly_estimated_bill', 'solar_sellback_rate') || 2.20;
+    const ftRate = getAttribute(billEntityId, 'ft_rate') || 0.395;
+    const tariffCategory = getAttribute(billEntityId, 'tariff_category') || '1.2';
+    const sellbackRate = getAttribute(billEntityId, 'solar_sellback_rate') || 2.20;
     const VAT_RATE = 0.07;
 
     // Check if active tariff is TOU (Time of Use 1.3.1 or 1.3.2)
@@ -452,8 +468,8 @@ class ThaiEnergyPanel extends HTMLElement {
       solarRevenue: getEntityState('sensor.monthly_solar_export_revenue'),
       totalSolarBenefit: getEntityState('sensor.monthly_total_solar_benefit'),
       lifetimeBenefit: getEntityState('sensor.lifetime_total_solar_benefit'),
-      lifetimeSolarSavings: getEntityState('sensor.lifetime_solar_savings') || getAttribute('sensor.monthly_estimated_bill', 'lifetime_solar_savings_thb') || '0.00',
-      lifetimeSolarRevenue: getEntityState('sensor.lifetime_solar_revenue') || getAttribute('sensor.monthly_estimated_bill', 'lifetime_solar_revenue_thb') || '0.00',
+      lifetimeSolarSavings: getEntityState('sensor.lifetime_solar_savings') || getAttribute(billEntityId, 'lifetime_solar_savings_thb') || '0.00',
+      lifetimeSolarRevenue: getEntityState('sensor.lifetime_solar_revenue') || getAttribute(billEntityId, 'lifetime_solar_revenue_thb') || '0.00',
       lifetimeImport: getEntityState('sensor.lifetime_grid_import_energy'),
       lifetimeSolar: getEntityState('sensor.lifetime_solar_production_energy'),
       marginalRate: getEntityState('sensor.active_marginal_retail_rate'),
@@ -466,11 +482,11 @@ class ThaiEnergyPanel extends HTMLElement {
       meaCash: getEntityState('sensor.mea_points_cash_value'),
       outageCost: getEntityState('sensor.grid_outage_economic_cost'),
       outageCount: getEntityState('sensor.grid_outage_incident_count'),
-      lastMonthBill: getAttribute('sensor.monthly_estimated_bill', 'last_month_bill_thb') || '0.00',
-      lastMonthImport: getAttribute('sensor.monthly_estimated_bill', 'last_month_import_kwh') || '0.00',
-      provider: getAttribute('sensor.monthly_estimated_bill', 'utility_provider') || 'MEA',
+      lastMonthBill: getAttribute(billEntityId, 'last_month_bill_thb') || '0.00',
+      lastMonthImport: getAttribute(billEntityId, 'last_month_import_kwh') || '0.00',
+      provider: getAttribute(billEntityId, 'utility_provider') || 'MEA',
       tariffCategory: tariffCategory,
-      opposingTariffName: getAttribute('sensor.monthly_estimated_bill', 'opposing_tariff_name') || 'TOU 1.3.2',
+      opposingTariffName: getAttribute(billEntityId, 'opposing_tariff_name') || 'TOU 1.3.2',
       basePct: basePct,
       ftPct: ftPct,
       vatPct: vatPct,
@@ -488,26 +504,26 @@ class ThaiEnergyPanel extends HTMLElement {
       bessLookbackTotalSavings: bessLookbackTotalSavings,
       bessLookbackTotalShifted: bessLookbackTotalShifted,
       bessLookbackPaybackYears: bessLookbackPaybackYears,
-      outageHistory: getAttribute('sensor.monthly_estimated_bill', 'outage_history') || [],
-      totalOutageSeconds: getAttribute('sensor.monthly_estimated_bill', 'total_outage_seconds') || 0,
-      bessCapacityKwh: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capacity_kwh')) || 5.0,
-      bessCapexCost: parseFloat(getAttribute('sensor.monthly_estimated_bill', 'bess_capex_cost')) || 50000.0,
-      bessGridCharging: getAttribute('sensor.monthly_estimated_bill', 'bess_grid_charging') === true || String(getAttribute('sensor.monthly_estimated_bill', 'bess_grid_charging')).toLowerCase() === 'true',
-      bessTariffModel: getAttribute('sensor.monthly_estimated_bill', 'bess_tariff_model') || 'tou',
-      billingDay: parseInt(getAttribute('sensor.monthly_estimated_bill', 'billing_day')) || 1,
-      meaEbillActive: getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_ebill_active')).toLowerCase() === 'true',
-      meaEpaymentActive: getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active') === true || String(getAttribute('sensor.monthly_estimated_bill', 'mea_epayment_active')).toLowerCase() === 'true',
+      outageHistory: getAttribute(billEntityId, 'outage_history') || [],
+      totalOutageSeconds: getAttribute(billEntityId, 'total_outage_seconds') || 0,
+      bessCapacityKwh: parseFloat(getAttribute(billEntityId, 'bess_capacity_kwh')) || 5.0,
+      bessCapexCost: parseFloat(getAttribute(billEntityId, 'bess_capex_cost')) || 50000.0,
+      bessGridCharging: getAttribute(billEntityId, 'bess_grid_charging') === true || String(getAttribute(billEntityId, 'bess_grid_charging')).toLowerCase() === 'true',
+      bessTariffModel: getAttribute(billEntityId, 'bess_tariff_model') || 'tou',
+      billingDay: parseInt(getAttribute(billEntityId, 'billing_day')) || 1,
+      meaEbillActive: getAttribute(billEntityId, 'mea_ebill_active') === true || String(getAttribute(billEntityId, 'mea_ebill_active')).toLowerCase() === 'true',
+      meaEpaymentActive: getAttribute(billEntityId, 'mea_epayment_active') === true || String(getAttribute(billEntityId, 'mea_epayment_active')).toLowerCase() === 'true',
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: parseFloat(solcastForecastToday || 0).toFixed(2),
       solcastPowerNow: solcastPowerNowNum.toFixed(2),
       solcastPowerNowUnit: solcastPowerUnit,
       solcastForecastRemaining: parseFloat(solcastForecastRemaining || 0).toFixed(2),
 
-      customPeakRate: getAttribute('sensor.monthly_estimated_bill', 'custom_peak_rate') || '',
-      customOffpeakRate: getAttribute('sensor.monthly_estimated_bill', 'custom_offpeak_rate') || '',
-      customTier1Rate: getAttribute('sensor.monthly_estimated_bill', 'custom_tier1_rate') || '',
-      customTier2Rate: getAttribute('sensor.monthly_estimated_bill', 'custom_tier2_rate') || '',
-      customTier3Rate: getAttribute('sensor.monthly_estimated_bill', 'custom_tier3_rate') || '',
+      customPeakRate: getAttribute(billEntityId, 'custom_peak_rate') || '',
+      customOffpeakRate: getAttribute(billEntityId, 'custom_offpeak_rate') || '',
+      customTier1Rate: getAttribute(billEntityId, 'custom_tier1_rate') || '',
+      customTier2Rate: getAttribute(billEntityId, 'custom_tier2_rate') || '',
+      customTier3Rate: getAttribute(billEntityId, 'custom_tier3_rate') || '',
 
       // Debug Diagnostic Properties
       importSensorId: importSensorId,
@@ -523,7 +539,7 @@ class ThaiEnergyPanel extends HTMLElement {
       solarUnit: solarUnit,
       exportUnit: exportUnit,
       currentDayOfCycle: currentDay,
-      billingResetDay: getAttribute('sensor.monthly_estimated_bill', 'billing_day') || '1',
+      billingResetDay: getAttribute(billEntityId, 'billing_day') || '1',
 
       // Additional User Configured Sensors
       pm2230Power: pm2230Power,
@@ -2134,6 +2150,8 @@ class ThaiEnergyPanel extends HTMLElement {
                   <input type="checkbox" id="setting-mea-epayment" ${d.meaEpaymentActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> Active MEA e-Payment
                 </label>
               </div>
+            </div>
+          </div>
           <div class="card full-width" style="margin-top: 10px;">
             <h2>Custom Base Energy Rate Overrides (Optional)</h2>
             <p style="font-size: 13px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.4; margin-bottom: 16px;">
@@ -2172,7 +2190,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 
