@@ -57,7 +57,7 @@ class ThaiEnergyPanel extends HTMLElement {
     if (!states) return false;
     let billEntityId = 'sensor.monthly_estimated_bill';
     for (const entityId in states) {
-      if (entityId.endsWith('monthly_estimated_bill')) {
+      if (entityId.includes('monthly_estimated_bill')) {
         billEntityId = entityId;
         break;
       }
@@ -161,7 +161,7 @@ class ThaiEnergyPanel extends HTMLElement {
     // Dynamically locate the estimated bill entity ID to support custom names/device prefixes
     let billEntityId = 'sensor.monthly_estimated_bill';
     for (const entityId in states) {
-      if (entityId.endsWith('monthly_estimated_bill')) {
+      if (entityId.includes('monthly_estimated_bill')) {
         billEntityId = entityId;
         break;
       }
@@ -629,14 +629,15 @@ class ThaiEnergyPanel extends HTMLElement {
               btnSaveBess.style.backgroundColor = 'var(--primary-color, #03a9f4)';
               btnSaveBess.disabled = false;
             }, 1800);
-          }).catch(() => {
-            btnSaveBess.innerHTML = '✅ Saved & Recalculated!';
-            btnSaveBess.style.backgroundColor = 'var(--success-color, #4caf50)';
+          }).catch((err) => {
+            console.error("BESS configuration failed:", err);
+            btnSaveBess.innerHTML = '❌ Save Failed!';
+            btnSaveBess.style.backgroundColor = 'var(--error-color, #f44336)';
             setTimeout(() => {
               btnSaveBess.innerHTML = origHtml;
               btnSaveBess.style.backgroundColor = 'var(--primary-color, #03a9f4)';
               btnSaveBess.disabled = false;
-            }, 1800);
+            }, 3000);
           });
         }
       });
@@ -663,15 +664,16 @@ class ThaiEnergyPanel extends HTMLElement {
             btnAdjustMea.style.backgroundColor = 'var(--primary-color, #03a9f4)';
             btnAdjustMea.disabled = false;
           }, 1500);
-        }).catch(() => {
-          btnAdjustMea.innerHTML = '✅ Adjusted!';
-          btnAdjustMea.style.backgroundColor = 'var(--success-color, #4caf50)';
+        }).catch((err) => {
+          console.error("MEA points adjustment failed:", err);
+          btnAdjustMea.innerHTML = '❌ Failed!';
+          btnAdjustMea.style.backgroundColor = 'var(--error-color, #f44336)';
           inputMeaDelta.value = '';
           setTimeout(() => {
             btnAdjustMea.innerHTML = origText;
             btnAdjustMea.style.backgroundColor = 'var(--primary-color, #03a9f4)';
             btnAdjustMea.disabled = false;
-          }, 1500);
+          }, 3000);
         });
       });
     }
@@ -728,14 +730,15 @@ class ThaiEnergyPanel extends HTMLElement {
             btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
             btnSaveSettings.disabled = false;
           }, 1800);
-        }).catch(() => {
-          btnSaveSettings.innerHTML = '✅ Configuration Saved!';
-          btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
+        }).catch((err) => {
+          console.error("Save settings service call failed:", err);
+          btnSaveSettings.innerHTML = '❌ Save Failed! Check HA logs';
+          btnSaveSettings.style.backgroundColor = 'var(--error-color, #f44336)';
           setTimeout(() => {
             btnSaveSettings.innerHTML = origHtml;
             btnSaveSettings.style.backgroundColor = 'var(--success-color, #4caf50)';
             btnSaveSettings.disabled = false;
-          }, 1800);
+          }, 3000);
         });
       });
     }
@@ -2190,7 +2193,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.8.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 

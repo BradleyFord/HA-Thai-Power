@@ -159,13 +159,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     async def async_handle_configure_settings(call: ServiceCall) -> None:
+        grid_import = call.data[CONF_GRID_IMPORT_SENSOR]
+        grid_export = call.data.get(CONF_GRID_EXPORT_SENSOR) or grid_import
+        solar_prod = call.data[CONF_SOLAR_PROD_SENSOR]
+
         new_data = {
             CONF_UTILITY_PROVIDER: call.data[CONF_UTILITY_PROVIDER],
             CONF_TARIFF_CATEGORY: call.data[CONF_TARIFF_CATEGORY],
             CONF_BILLING_DAY: int(call.data[CONF_BILLING_DAY]),
-            CONF_GRID_IMPORT_SENSOR: call.data[CONF_GRID_IMPORT_SENSOR],
-            CONF_GRID_EXPORT_SENSOR: call.data[CONF_GRID_EXPORT_SENSOR],
-            CONF_SOLAR_PROD_SENSOR: call.data[CONF_SOLAR_PROD_SENSOR],
+            CONF_GRID_IMPORT_SENSOR: grid_import,
+            CONF_GRID_EXPORT_SENSOR: grid_export,
+            CONF_SOLAR_PROD_SENSOR: solar_prod,
             CONF_FT_RATE: float(call.data[CONF_FT_RATE]),
             CONF_SOLAR_SELLBACK_RATE: float(call.data[CONF_SOLAR_SELLBACK_RATE]),
             CONF_MEA_EBILL: bool(call.data[CONF_MEA_EBILL]),
@@ -225,7 +229,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=1.8.8",
+                    "js_url": "/thai_energy_ui/panel.js?v=1.8.9",
                 }
             },
             require_admin=False,
