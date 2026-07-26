@@ -272,13 +272,13 @@ class ThaiEnergyPanel extends HTMLElement {
     let pastUnscaledImportSum = 0.0;
     let pastUnscaledSolarSum = 0.0;
     for (let day = 1; day <= currentDay; day++) {
-      let imp = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 0;
-      if (!imp || imp < 0.1) imp = avgDailyImport;
-      pastUnscaledImportSum += imp;
+      let imp = pyImportHistory[day - 1];
+      let impVal = (imp !== undefined && imp !== null) ? parseFloat(imp) : avgDailyImport;
+      pastUnscaledImportSum += impVal;
 
-      let sol = pySolarHistory[day - 1] !== undefined ? parseFloat(pySolarHistory[day - 1]) : 0;
-      if (!sol || sol < 0.1) sol = avgDailySolar;
-      pastUnscaledSolarSum += sol;
+      let sol = pySolarHistory[day - 1];
+      let solVal = (sol !== undefined && sol !== null) ? parseFloat(sol) : avgDailySolar;
+      pastUnscaledSolarSum += solVal;
     }
 
     const importScale = (pastUnscaledImportSum > 0 && importKwhNum > 0) ? (importKwhNum / pastUnscaledImportSum) : 1.0;
@@ -291,9 +291,9 @@ class ThaiEnergyPanel extends HTMLElement {
       const isPastOrToday = day <= currentDay;
       let dayKwh = 0.0;
       if (isPastOrToday) {
-        let rawKwh = pyImportHistory[day - 1] !== undefined ? parseFloat(pyImportHistory[day - 1]) : 0;
-        if (!rawKwh || rawKwh < 0.1) rawKwh = avgDailyImport;
-        dayKwh = rawKwh * importScale;
+        let rawKwh = pyImportHistory[day - 1];
+        let rawKwhVal = (rawKwh !== undefined && rawKwh !== null) ? parseFloat(rawKwh) : avgDailyImport;
+        dayKwh = rawKwhVal * importScale;
       } else {
         dayKwh = avgDailyImport;
       }
@@ -354,24 +354,24 @@ class ThaiEnergyPanel extends HTMLElement {
       
       let impKwh = 0.0;
       if (isPastOrToday) {
-        let rawImp = pyImportHistory[i] !== undefined ? parseFloat(pyImportHistory[i]) : 0;
-        if (!rawImp || rawImp < 0.1) rawImp = avgDailyImport;
-        impKwh = rawImp * importScale;
+        let rawImp = pyImportHistory[i];
+        let rawImpVal = (rawImp !== undefined && rawImp !== null) ? parseFloat(rawImp) : avgDailyImport;
+        impKwh = rawImpVal * importScale;
       } else {
         impKwh = avgDailyImport;
       }
 
       let solKwh = 0.0;
       if (isPastOrToday) {
-        let rawSol = pySolarHistory[i] !== undefined ? parseFloat(pySolarHistory[i]) : 0;
-        if (!rawSol || rawSol < 0.1) rawSol = avgDailySolar;
-        solKwh = rawSol * solarScale;
+        let rawSol = pySolarHistory[i];
+        let rawSolVal = (rawSol !== undefined && rawSol !== null) ? parseFloat(rawSol) : avgDailySolar;
+        solKwh = rawSolVal * solarScale;
       } else {
         solKwh = avgDailySolar;
       }
 
-      let expKwh = pyExportHistory[i] !== undefined ? parseFloat(pyExportHistory[i]) : 0;
-      if (!expKwh || expKwh < 0.01) expKwh = avgDailyExport;
+      let rawExp = pyExportHistory[i];
+      let expKwh = (rawExp !== undefined && rawExp !== null) ? parseFloat(rawExp) : avgDailyExport;
 
       const selfKwh = Math.max(0, solKwh - expKwh);
 
@@ -798,9 +798,12 @@ class ThaiEnergyPanel extends HTMLElement {
   _initialRender() {
     const d = this._data;
     const isOffpeak = d.isOffpeak;
-    const offpeakBadge = isOffpeak
-      ? `<span class="badge offpeak">Off-Peak Window</span>`
-      : `<span class="badge peak">Peak Window</span>`;
+    const isTou = d.isTou;
+    const offpeakBadge = isTou
+      ? (isOffpeak
+        ? `<span class="badge offpeak">Off-Peak Window</span>`
+        : `<span class="badge peak">Peak Window</span>`)
+      : '';
 
     const diffVal = parseFloat(d.tariffDiff || '0');
     const diffClass = diffVal >= 0 ? 'saving' : 'warning';
@@ -2196,7 +2199,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.9.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.9.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 
