@@ -474,8 +474,8 @@ class ThaiEnergyPanel extends HTMLElement {
       lifetimeSolar: getEntityState('sensor.lifetime_solar_production_energy'),
       marginalRate: getEntityState('sensor.active_marginal_retail_rate'),
       gridPrice: getEntityState('sensor.current_grid_energy_import_price'),
-      ftRate: getEntityState('sensor.current_ft_adjustment_rate'),
-      sellbackRate: getEntityState('sensor.solar_buy_back_rate'),
+      ftRate: getEntityState('sensor.current_ft_adjustment_rate') || getAttribute(billEntityId, 'ft_rate') || '0.3950',
+      sellbackRate: getEntityState('sensor.solar_buy_back_rate') || getAttribute(billEntityId, 'solar_sellback_rate') || '2.20',
       tariffDiff: getEntityState('sensor.predictive_tariff_difference'),
       bessSavings: getEntityState('sensor.bess_storage_simulated_savings'),
       meaPoints: getEntityState('sensor.mea_virtual_points_balance'),
@@ -686,9 +686,12 @@ class ThaiEnergyPanel extends HTMLElement {
         const solarProd = shadow.getElementById('setting-solar-prod')?.value || '';
         const utilityProvider = shadow.getElementById('setting-utility-provider')?.value || 'MEA';
         const tariffCategory = shadow.getElementById('setting-tariff-category')?.value || '1.2';
-        const billingDay = parseInt(shadow.getElementById('setting-billing-day')?.value || '1', 10);
-        const ftRate = parseFloat(shadow.getElementById('setting-ft-rate')?.value || '0.3950');
-        const sellbackRate = parseFloat(shadow.getElementById('setting-sellback-rate')?.value || '2.20');
+        let billingDay = parseInt(shadow.getElementById('setting-billing-day')?.value || '1', 10);
+        if (isNaN(billingDay)) billingDay = 1;
+        let ftRate = parseFloat(shadow.getElementById('setting-ft-rate')?.value || '0.3950');
+        if (isNaN(ftRate)) ftRate = 0.3950;
+        let sellbackRate = parseFloat(shadow.getElementById('setting-sellback-rate')?.value || '2.20');
+        if (isNaN(sellbackRate)) sellbackRate = 2.20;
         const meaEbill = shadow.getElementById('setting-mea-ebill')?.checked === true;
         const meaEpayment = shadow.getElementById('setting-mea-epayment')?.checked === true;
 
@@ -2193,7 +2196,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.8.9 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.9.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 
