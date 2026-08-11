@@ -45,9 +45,124 @@ SERVICE_TRIGGER_12_MONTH_LOOKBACK = "trigger_12_month_lookback"
 SERVICE_TRIGGER_BESS_LOOKBACK = "trigger_bess_lookback"
 
 
+def fetch_latest_ft_rate_sync() -> float | None:
+    """Fetch latest FT rate from MEA Open Data portal synchronously."""
+    import urllib.request
+    import json
+    import csv
+    import io
+    from datetime import datetime
+
+    search_url = "https://opendata.mea.or.th/api/3/action/package_search?q=ft"
+    try:
+        req = urllib.request.Request(search_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            if not data.get('success'):
+                return None
+            
+            results = data.get('result', {}).get('results', [])
+            target_resource_url = None
+            for pkg in results:
+                pkg_name = pkg.get('name', '').lower()
+                pkg_title = pkg.get('title', '').lower()
+                if 'ft' in pkg_name or 'ft' in pkg_title:
+                    for res in pkg.get('resources', []):
+                        if res.get('format', '').upper() == 'CSV':
+                            target_resource_url = res.get('url')
+                            break
+                if target_resource_url:
+                    break
+            
+            if not target_resource_url:
+                return None
+            
+            req_csv = urllib.request.Request(target_resource_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req_csv, timeout=15) as resp_csv:
+                content = resp_csv.read().decode('utf-8')
+                reader = csv.reader(io.StringIO(content))
+                next(reader)  # Skip header
+                
+                now = datetime.now()
+                current_year = now.year
+                current_month = now.month
+                
+                matching_rows = []
+                for row in reader:
+                    if not row or len(row) < 5:
+                        continue
+                    try:
+                        yr = int(row[0].strip())
+                        mo = int(row[1].strip())
+                        user_type = row[2].strip()
+                        ft_val = float(row[4].strip())
+                        
+                        # Type 1 is residential / บ้านอยู่อาศัย
+                        if user_type == '1':
+                            matching_rows.append((yr, mo, ft_val))
+                    except (ValueError, IndexError):
+                        continue
+                
+                if not matching_rows:
+                    return None
+                
+                # Sort matching rows by (year, month) descending
+                matching_rows.sort(key=lambda x: (x[0], x[1]), reverse=True)
+                
+                # Find the latest one that is <= today
+                for yr, mo, ft_val in matching_rows:
+                    if yr < current_year or (yr == current_year and mo <= current_month):
+                        return ft_val
+                
+                # Fallback to the absolute latest row if all are in the future
+                return matching_rows[0][2]
+                
+    except Exception as err:
+        _LOGGER.error("Failed to fetch latest FT rate from MEA Open Data API: %s", err)
+        return None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Thailand Energy & Solar Monitor from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+
+    # Schedule automated daily FT rate updates from MEA Open Data API at 3:00 AM
+    from homeassistant.helpers.event import async_track_time_change
+    
+    async def async_auto_update_ft(now_time=None) -> None:
+        """Fetch and update FT rate from MEA API automatically."""
+        _LOGGER.info("Starting scheduled FT rate auto-update from MEA Open Data API")
+        latest_ft = await hass.async_add_executor_job(fetch_latest_ft_rate_sync)
+        if latest_ft is not None:
+            current_ft = entry.data.get(CONF_FT_RATE)
+            if current_ft is None or abs(current_ft - latest_ft) > 0.0001:
+                _LOGGER.info(
+                    "Updating FT rate from %s to %s THB/kWh based on MEA Open Data API",
+                    current_ft,
+                    latest_ft,
+                )
+                new_data = {**entry.data, CONF_FT_RATE: latest_ft}
+                hass.config_entries.async_update_entry(entry, data=new_data)
+                
+                # Reload integration to apply new FT rate immediately
+                await hass.config_entries.async_reload(entry.entry_id)
+            else:
+                _LOGGER.info("Configured FT rate is already up to date: %s THB/kWh", latest_ft)
+        else:
+            _LOGGER.warning("Could not fetch latest FT rate from MEA API; keeping current rate")
+
+    entry.async_on_unload(
+        async_track_time_change(
+            hass,
+            async_auto_update_ft,
+            hour=3,
+            minute=0,
+            second=0,
+        )
+    )
+
+    # Trigger background check on startup to ensure alignment with latest rates
+    hass.async_create_task(async_auto_update_ft())
 
     coordinator = ThaiEnergyDataUpdateCoordinator(hass, entry)
     await coordinator.async_setup_listeners()
@@ -229,7 +344,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=1.9.2",
+                    "js_url": "/thai_energy_ui/panel.js?v=1.9.3",
                 }
             },
             require_admin=False,
