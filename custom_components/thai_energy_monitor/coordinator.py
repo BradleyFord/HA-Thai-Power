@@ -909,7 +909,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         current_grid_price = marginal_rate + ft_rate
 
-        self.monthly_solar_savings_thb = curr_self_consumption * marginal_rate
+        # Value solar self-consumption savings using a stable weighted rate for TOU,
+        # since solar generation happens during the day and should not fluctuate at night.
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            savings_rate = (0.70 * self.active_tou_peak_rate) + (0.30 * self.active_tou_offpeak_rate)
+        else:
+            savings_rate = marginal_rate
+
+        self.monthly_solar_savings_thb = curr_self_consumption * savings_rate
         self.lifetime_solar_savings_thb = self.monthly_solar_savings_thb
 
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
