@@ -909,14 +909,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         current_grid_price = marginal_rate + ft_rate
 
-        # Value solar self-consumption savings using a stable weighted rate for TOU,
-        # since solar generation happens during the day and should not fluctuate at night.
-        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            savings_rate = (0.70 * self.active_tou_peak_rate) + (0.30 * self.active_tou_offpeak_rate)
-        else:
-            savings_rate = marginal_rate
-
-        self.monthly_solar_savings_thb = curr_self_consumption * savings_rate
+        self.monthly_solar_savings_thb = curr_self_consumption * marginal_rate
         self.lifetime_solar_savings_thb = self.monthly_solar_savings_thb
 
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
@@ -1031,6 +1024,74 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             total_shifted_savings += day_savings
 
         self.bess_simulated_savings_thb = total_shifted_savings
+
+        # Calculate past days solar self-consumption savings in 2 passes (Peak / Off-Peak)
+        total_solar_savings_thb = 0.0
+        past_self_consumption_sum = 0.0
+        curr_day_val = max(1, current_day)
+        
+        daily_solar_history = recorder_history.get("daily_solar_kwh_history", [])
+        daily_export_history = recorder_history.get("daily_export_kwh_history", [])
+        
+        for idx in range(min(30, len(daily_solar_history))):
+            day_num = idx + 1
+            # Only count completed past days
+            if day_num < curr_day_val:
+                sol_kwh = daily_solar_history[idx]
+                exp_kwh = daily_export_history[idx] if idx < len(daily_export_history) else 0.0
+                
+                # Check for invalid values and default to daily averages
+                if sol_kwh is None or sol_kwh < 0.001:
+                    sol_kwh = self.monthly_solar_kwh / curr_day_val
+                if exp_kwh is None or exp_kwh < 0.0:
+                    exp_kwh = self.monthly_export_kwh / curr_day_val
+                
+                day_self = max(0.0, sol_kwh - exp_kwh)
+                past_self_consumption_sum += day_self
+                
+                day_date = (start_dt + timedelta(days=idx)).date()
+                is_weekday = day_date.weekday() < 5
+                
+                if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+                    if is_weekday:
+                        day_peak_self = 0.90 * day_self
+                        day_offpeak_self = 0.10 * day_self
+                    else:
+                        day_peak_self = 0.0
+                        day_offpeak_self = 1.0 * day_self
+                    
+                    day_savings = (day_peak_self * self.active_tou_peak_rate) + (day_offpeak_self * self.active_tou_offpeak_rate)
+                else:
+                    day_savings = day_self * marginal_rate
+                
+                total_solar_savings_thb += day_savings
+
+        # Add today's incremental self-consumption savings (today is day_num = current_day)
+        today_total_self = max(0.0, self.monthly_solar_kwh - self.monthly_export_kwh)
+        today_incremental_self = max(0.0, today_total_self - past_self_consumption_sum)
+        
+        today_date = now.date()
+        is_today_weekday = today_date.weekday() < 5
+        
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            if is_today_weekday:
+                today_peak_self = 0.90 * today_incremental_self
+                today_offpeak_self = 0.10 * today_incremental_self
+            else:
+                today_peak_self = 0.0
+                today_offpeak_self = 1.0 * today_incremental_self
+            
+            today_savings = (today_peak_self * self.active_tou_peak_rate) + (today_offpeak_self * self.active_tou_offpeak_rate)
+        else:
+            today_savings = today_incremental_self * marginal_rate
+
+        total_solar_savings_thb += today_savings
+        
+        # Update self properties and solar total benefits
+        self.monthly_solar_savings_thb = total_solar_savings_thb
+        self.lifetime_solar_savings_thb = self.monthly_solar_savings_thb
+        monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + (self.monthly_export_kwh * sellback_rate)
+        lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + (self.lifetime_export_kwh * sellback_rate)
 
         return {
             "tou_window_status": "Off-Peak" if is_offpeak else "Peak",
