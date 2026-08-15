@@ -1105,6 +1105,70 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + (self.monthly_export_kwh * sellback_rate)
         lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + (self.lifetime_export_kwh * sellback_rate)
 
+        # Calculate daily Peak and Off-Peak grid import separately in 2 passes
+        total_peak_import_kwh = 0.0
+        total_offpeak_import_kwh = 0.0
+        past_import_sum = 0.0
+        
+        daily_import_history = recorder_history.get("daily_import_kwh_history", [])
+        
+        for idx in range(min(30, len(daily_import_history))):
+            day_num = idx + 1
+            if day_num < curr_day_val:
+                imp_kwh = daily_import_history[idx]
+                sol_kwh = daily_solar_history[idx] if idx < len(daily_solar_history) else 0.0
+                
+                if imp_kwh is None or imp_kwh < 0.0:
+                    imp_kwh = self.monthly_import_kwh / curr_day_val
+                
+                past_import_sum += imp_kwh
+                day_date = (start_dt + timedelta(days=idx)).date()
+                is_weekday = day_date.weekday() < 5
+                
+                if is_weekday:
+                    has_solar = sol_kwh is not None and sol_kwh > 1.0
+                    peak_share = 0.20 if has_solar else 0.45
+                    day_peak = imp_kwh * peak_share
+                    day_offpeak = imp_kwh * (1.0 - peak_share)
+                else:
+                    day_peak = 0.0
+                    day_offpeak = imp_kwh
+                
+                total_peak_import_kwh += day_peak
+                total_offpeak_import_kwh += day_offpeak
+
+        # Add today's incremental import
+        today_total_import = self.monthly_import_kwh
+        today_incremental_import = max(0.0, today_total_import - past_import_sum)
+        today_date = now.date()
+        is_today_weekday = today_date.weekday() < 5
+        
+        if is_today_weekday:
+            has_solar_today = self.monthly_solar_kwh > 1.0
+            peak_share_today = 0.20 if has_solar_today else 0.45
+            today_peak = today_incremental_import * peak_share_today
+            today_offpeak = today_incremental_import * (1.0 - peak_share_today)
+        else:
+            today_peak = 0.0
+            today_offpeak = today_incremental_import
+        
+        total_peak_import_kwh += today_peak
+        total_offpeak_import_kwh += today_offpeak
+        
+        self.monthly_tou_peak_import_kwh = total_peak_import_kwh
+        self.monthly_tou_offpeak_import_kwh = total_offpeak_import_kwh
+        self.phantom_tou_peak_kwh = total_peak_import_kwh
+        self.phantom_tou_offpeak_kwh = total_offpeak_import_kwh
+        
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            accrued_base_cost = (total_peak_import_kwh * self.active_tou_peak_rate) + (
+                total_offpeak_import_kwh * self.active_tou_offpeak_rate
+            )
+            # Recompute total accrued bill
+            accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
+            accrued_vat_amount = accrued_subtotal * VAT_RATE
+            monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
+
         return {
             "tou_window_status": "Off-Peak" if is_offpeak else "Peak",
             # Monthly Resetting Entities (Accrued To Date & Projected Full Month)
