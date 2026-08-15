@@ -10,11 +10,11 @@
   ],
   "config_flow": true,
   "documentation": "https://github.com/BradleyFord/HA-Thai-Power",
-  "issue_tracker": "https://github.com/BradleyFord/HA-Thai-Power/issues",
   "integration_type": "hub",
   "iot_class": "calculated",
+  "issue_tracker": "https://github.com/BradleyFord/HA-Thai-Power/issues",
   "requirements": [
     "holidays>=0.35"
   ],
-  "version": "1.9.8"
+  "version": "2.0.0"
 }
