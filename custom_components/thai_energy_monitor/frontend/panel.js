@@ -2127,7 +2127,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v1.9.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v1.9.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 
