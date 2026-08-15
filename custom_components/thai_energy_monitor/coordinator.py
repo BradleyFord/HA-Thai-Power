@@ -358,13 +358,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 states = get_significant_states(
                     self.hass,
-                    start_time=target_dt - timedelta(minutes=30),
-                    end_time=target_dt + timedelta(minutes=30),
+                    start_time=target_dt - timedelta(hours=24),
+                    end_time=target_dt + timedelta(hours=24),
                     entity_ids=[entity_id],
                     significant_changes_only=False,
                 )
                 if entity_id in states and states[entity_id]:
-                    st_val = states[entity_id][0].state
+                    # Pick the state closest to target_dt
+                    best_state = min(
+                        states[entity_id],
+                        key=lambda s: abs((s.last_updated - target_dt).total_seconds())
+                    )
+                    st_val = best_state.state
                     if st_val not in ("unavailable", "unknown"):
                         return float(st_val)
             except Exception as err:
@@ -829,12 +834,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if fetched_base is not None and fetched_base > 0.0:
                     self.import_baseline_kwh = fetched_base
                 else:
-                    self.import_baseline_kwh = max(0.0, curr_import - (current_day * 33.33))
+                    self.import_baseline_kwh = curr_import
             
             if curr_import >= (self.import_baseline_kwh or 0.0) and (self.import_baseline_kwh or 0.0) > 0.0:
                 self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
             else:
-                self.monthly_import_kwh = min(curr_import, current_day * 33.33)
+                self.monthly_import_kwh = 0.0
 
         # Solar Riemann Sum Integration
         if is_solar_power:
@@ -856,12 +861,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if fetched_solar is not None and fetched_solar > 0.0:
                     self.solar_baseline_kwh = fetched_solar
                 else:
-                    self.solar_baseline_kwh = max(0.0, curr_solar - (current_day * 15.0))
+                    self.solar_baseline_kwh = curr_solar
             
             if curr_solar >= (self.solar_baseline_kwh or 0.0) and (self.solar_baseline_kwh or 0.0) > 0.0:
                 self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
             else:
-                self.monthly_solar_kwh = min(curr_solar, current_day * 15.0)
+                self.monthly_solar_kwh = 0.0
 
         # Export Riemann Sum Integration
         if is_export_power:
@@ -883,12 +888,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if fetched_export is not None and fetched_export > 0.0:
                     self.export_baseline_kwh = fetched_export
                 else:
-                    self.export_baseline_kwh = max(0.0, curr_export - (current_day * 5.0))
+                    self.export_baseline_kwh = curr_export
             
             if curr_export >= (self.export_baseline_kwh or 0.0) and (self.export_baseline_kwh or 0.0) > 0.0:
                 self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
             else:
-                self.monthly_export_kwh = min(curr_export, current_day * 5.0)
+                self.monthly_export_kwh = 0.0
 
         self.lifetime_import_kwh = curr_import if not is_import_power else self.monthly_import_kwh
         self.lifetime_export_kwh = curr_export if not is_export_power else self.monthly_export_kwh
@@ -937,11 +942,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
             service_charge = TARIFF_1_3_1_SERVICE_CHARGE if category == TARIFF_1_3_1 else TARIFF_1_3_2_SERVICE_CHARGE
-            accrued_base_cost = ((self.monthly_import_kwh * 0.4) * self.active_tou_peak_rate) + (
-                (self.monthly_import_kwh * 0.6) * self.active_tou_offpeak_rate
+            # Solar households offset daytime peak load, so grid import is predominantly off-peak (80%)
+            peak_ratio = 0.20 if self.monthly_solar_kwh > 5.0 else 0.40
+            offpeak_ratio = 1.0 - peak_ratio
+            accrued_base_cost = ((self.monthly_import_kwh * peak_ratio) * self.active_tou_peak_rate) + (
+                (self.monthly_import_kwh * offpeak_ratio) * self.active_tou_offpeak_rate
             )
 
-        accrued_subtotal = accrued_base_cost + service_charge + accrued_ft_charge
+        # Accrued bill to date prorates the fixed monthly service charge proportionally across elapsed days
+        prorated_service_charge = (service_charge / 30.0) * min(30, max(1, current_day))
+        accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
         accrued_vat_amount = accrued_subtotal * VAT_RATE
         monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
 
@@ -961,8 +971,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             base_cost = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
 
         elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            base_cost = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
-                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
+            peak_ratio = 0.20 if self.monthly_solar_kwh > 5.0 else 0.40
+            offpeak_ratio = 1.0 - peak_ratio
+            base_cost = ((projected_monthly_import * peak_ratio) * self.active_tou_peak_rate) + (
+                (projected_monthly_import * offpeak_ratio) * self.active_tou_offpeak_rate
             )
 
         subtotal = base_cost + service_charge + monthly_ft_charge
