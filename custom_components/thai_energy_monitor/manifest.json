@@ -1,6 +1,10 @@
 {
   "domain": "thai_energy_monitor",
   "name": "Thailand Energy & Solar Monitor",
+  "after_dependencies": [
+    "http",
+    "recorder"
+  ],
   "codeowners": [
     "@BradleyFord"
   ],
