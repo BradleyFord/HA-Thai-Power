@@ -381,6 +381,54 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:
             return None
 
+    async def _async_populate_last_month_stats(self, now: datetime) -> None:
+        """Populate previous month's bill and volume from HA recorder if uninitialized."""
+        if self.last_month_import_kwh > 0.0 and self.last_month_bill_thb > 0.0:
+            return
+
+        if not self.import_sensor_id:
+            return
+
+        billing_start_dt = self._get_billing_start_datetime(now)
+        prev_billing_start_dt = self._get_billing_start_datetime(billing_start_dt - timedelta(days=1))
+
+        base_prev = await self._async_get_sensor_baseline(self.import_sensor_id, prev_billing_start_dt)
+        base_curr = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
+
+        if base_prev is not None and base_curr is not None and base_curr > base_prev:
+            prev_import = base_curr - base_prev
+            category = self.active_tariff_category
+            ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
+
+            if category == TARIFF_1_1:
+                service_charge = TARIFF_1_1_SERVICE_CHARGE
+                base_cost = (
+                    self.calculate_tiered_cost(prev_import, TARIFF_1_1_TIERS)
+                    if prev_import > TARIFF_1_1_PSO_SUBSIDY_LIMIT
+                    else 0.0
+                )
+            elif category == TARIFF_1_2:
+                service_charge = TARIFF_1_2_SERVICE_CHARGE
+                base_cost = self.calculate_tiered_cost(prev_import, self.active_tiered_1_2_tiers)
+            elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
+                service_charge = (
+                    TARIFF_1_3_1_SERVICE_CHARGE if category == TARIFF_1_3_1 else TARIFF_1_3_2_SERVICE_CHARGE
+                )
+                peak_ratio = 0.20 if self.monthly_solar_kwh > 5.0 else 0.40
+                base_cost = (
+                    (prev_import * peak_ratio) * self.active_tou_peak_rate
+                ) + ((prev_import * (1.0 - peak_ratio)) * self.active_tou_offpeak_rate)
+            else:
+                service_charge = 24.62
+                base_cost = prev_import * 4.4217
+
+            ft_charge = prev_import * ft_rate
+            subtotal = base_cost + service_charge + ft_charge
+            prev_bill = subtotal * (1.0 + VAT_RATE)
+
+            self.last_month_import_kwh = prev_import
+            self.last_month_bill_thb = prev_bill
+
     def _check_monthly_reset(self, now: datetime) -> None:
         """Check if today matches the user's billing cycle start day and reset accumulators."""
         target_billing_day = int(self.config_data.get(CONF_BILLING_DAY, 1))
@@ -807,6 +855,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             bkk_now = now
         
         current_day = self.get_billing_cycle_day(now)
+        await self._async_populate_last_month_stats(now)
 
         # --- RIEMANN INTEGRATION ENGINE FOR POWER SENSORS (kW/W) ---
         is_import_power = self._is_power_sensor(self.import_sensor_id, import_state)

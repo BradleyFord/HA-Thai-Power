@@ -1564,10 +1564,6 @@ class ThaiEnergyPanel extends HTMLElement {
             <div class="metric-main saving" id="val-solar-savings-main">฿${this._formatNum(d.solarSavings)}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Monthly Self-Consumption Savings</span>
-                <span class="val saving" id="val-solar-savings">฿${this._formatNum(d.solarSavings)}</span>
-              </div>
-              <div class="row">
                 <span class="label">Total Solar Production Volume</span>
                 <span class="val" id="val-solar-volume">${d.solarKwh} kWh</span>
               </div>
@@ -1586,10 +1582,6 @@ class ThaiEnergyPanel extends HTMLElement {
             <h2>Solar Export Buy-Back Revenue</h2>
             <div class="metric-main saving" id="val-solar-revenue-main">฿${this._formatNum(d.solarRevenue)}</div>
             <div class="table-rows">
-              <div class="row">
-                <span class="label">Monthly Grid Export Revenue</span>
-                <span class="val saving" id="val-solar-revenue">฿${this._formatNum(d.solarRevenue)}</span>
-              </div>
               <div class="row">
                 <span class="label">Export Buy-Back Tariff Rate</span>
                 <span class="val" id="val-sellback-rate-display">฿${d.sellbackRate} / kWh</span>
@@ -2127,7 +2119,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.1 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.1.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
