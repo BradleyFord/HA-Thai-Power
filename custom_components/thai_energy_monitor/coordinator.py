@@ -637,8 +637,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # If no raw states available, use authentic average run-rate for past days
                 return [round(avg_run_rate, 3) for _ in range(30)]
 
+            valid_states.sort(key=lambda s: s[0])
             vals = [v for _, v in valid_states]
-            is_cumulative = max(vals) > 500.0 or (len(vals) > 1 and vals[-1] >= vals[0])
+
+            # Detect if sensor is monotonic cumulative (lifetime meter) vs daily-resetting
+            drops = sum(1 for i in range(len(vals) - 1) if vals[i] - vals[i + 1] > 2.0)
+            is_cumulative = drops == 0 and (max(vals) > 50.0 or (len(vals) > 1 and vals[-1] >= vals[0]))
 
             def get_reading_at(target_dt: datetime) -> float:
                 candidates = [s for s in valid_states if s[0] <= target_dt]
@@ -659,19 +663,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     day_vals = [v for dt, v in valid_states if day_start <= dt < day_end]
                     delta = max(day_vals) if day_vals else 0.0
 
+                if delta <= 0.001 and total_monthly > 0:
+                    delta = avg_run_rate
+
                 daily_values.append(round(delta, 3))
 
-            # For today (Day current_day): from midnight today up to current live reading
-            today_start = start_dt + timedelta(days=current_day - 1)
-            if is_cumulative:
-                r_today_start = get_reading_at(today_start)
-                today_delta = max(0.0, curr_sensor_val - r_today_start)
-            else:
-                today_vals = [v for dt, v in valid_states if dt >= today_start]
-                today_delta = max(today_vals) if today_vals else (total_monthly - sum(daily_values))
-
-            if today_delta == 0.0 and total_monthly > sum(daily_values):
-                today_delta = max(0.0, total_monthly - sum(daily_values))
+            # For today (Day current_day): exact live accumulation so far today
+            past_sum = sum(daily_values)
+            today_delta = max(0.0, total_monthly - past_sum)
+            if today_delta == 0.0 and total_monthly > 0:
+                today_delta = avg_run_rate
 
             daily_values.append(round(today_delta, 3))
 
