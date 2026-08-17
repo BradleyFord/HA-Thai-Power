@@ -315,13 +315,16 @@
     const monthlyDailyBars = dailyKwhList.map((item) => {
       const isPastOrToday = item.isPastOrToday;
       let t1Val = 0, t2Val = 0, t3Val = 0, peakVal = 0, offpeakVal = 0, bVal = 0;
+      let isWeekend = false;
+      let dayPeakCost = 0.0;
+      let dayOffpeakCost = 0.0;
 
       if (isTou) {
         // Resolve day of week to accurately reflect 100% off-peak on weekends vs peak on weekdays
         const dayDate = new Date();
         dayDate.setDate(dayDate.getDate() - (currentDay - item.day));
         const dayOfWeek = dayDate.getDay();
-        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+        isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
         const dayPeakKwh = isWeekend ? 0.0 : (item.dayKwh * peakRatio);
         const dayOffpeakKwh = isWeekend ? item.dayKwh : (item.dayKwh * (1.0 - peakRatio));
@@ -333,8 +336,8 @@
         offpeakVal = cumOffpeakKwh * offpeakRate;
         bVal = peakVal + offpeakVal;
 
-        var dayPeakCost = dayPeakKwh * peakRate;
-        var dayOffpeakCost = dayOffpeakKwh * offpeakRate;
+        dayPeakCost = dayPeakKwh * peakRate;
+        dayOffpeakCost = dayOffpeakKwh * offpeakRate;
       } else {
         // Calculate progressive tiers for this day's cumulative runningKwh
         const t1Kwh = Math.min(item.runningKwh, 150);
@@ -360,9 +363,9 @@
         tier3: t3Val,
         peak: peakVal,
         offpeak: offpeakVal,
-        dayPeakCost: dayPeakCost || 0,
-        dayOffpeakCost: dayOffpeakCost || 0,
-        isWeekend: isWeekend || false,
+        dayPeakCost: dayPeakCost,
+        dayOffpeakCost: dayOffpeakCost,
+        isWeekend: isWeekend,
         dayKwh: item.dayKwh,
         ft: fVal,
         vat: vVal,
@@ -2148,7 +2151,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.9 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.2.0 &bull; Home Assistant Custom Integration
       </div>
     `;
 
