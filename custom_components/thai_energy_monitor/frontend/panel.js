@@ -308,14 +308,29 @@
 
     const maxAccruedKwh = Math.max(0.1, runningKwh);
 
+    let cumPeakKwh = 0.0;
+    let cumOffpeakKwh = 0.0;
+    const peakRatio = solarKwhNum > 5.0 ? 0.20 : 0.40;
+
     const monthlyDailyBars = dailyKwhList.map((item) => {
       const isPastOrToday = item.isPastOrToday;
       let t1Val = 0, t2Val = 0, t3Val = 0, peakVal = 0, offpeakVal = 0, bVal = 0;
 
       if (isTou) {
-        // Dynamic Peak/Off-Peak split based on active cumulative run-rate
-        peakVal = (item.runningKwh * 0.40) * peakRate;
-        offpeakVal = (item.runningKwh * 0.60) * offpeakRate;
+        // Resolve day of week to accurately reflect 100% off-peak on weekends vs peak on weekdays
+        const dayDate = new Date();
+        dayDate.setDate(dayDate.getDate() - (currentDay - item.day));
+        const dayOfWeek = dayDate.getDay();
+        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+        const dayPeakKwh = isWeekend ? 0.0 : (item.dayKwh * peakRatio);
+        const dayOffpeakKwh = isWeekend ? item.dayKwh : (item.dayKwh * (1.0 - peakRatio));
+
+        cumPeakKwh += dayPeakKwh;
+        cumOffpeakKwh += dayOffpeakKwh;
+
+        peakVal = cumPeakKwh * peakRate;
+        offpeakVal = cumOffpeakKwh * offpeakRate;
         bVal = peakVal + offpeakVal;
       } else {
         // Calculate progressive tiers for this day's cumulative runningKwh
@@ -2124,7 +2139,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.4 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.1.5 &bull; Home Assistant Custom Integration
       </div>
     `;
 
