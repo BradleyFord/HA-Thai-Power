@@ -824,6 +824,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     power_kw = (power_w / 1000.0) if unit == "W" else power_w
                     delta_kwh = (power_kw * elapsed) / 3600.0
                     self.monthly_import_kwh += delta_kwh
+                    self.lifetime_import_kwh += delta_kwh
             self._last_import_time = now
             self._last_import_power_val = curr_import
         else:
@@ -851,6 +852,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     power_kw = (power_w / 1000.0) if unit == "W" else power_w
                     delta_kwh = (power_kw * elapsed) / 3600.0
                     self.monthly_solar_kwh += delta_kwh
+                    self.lifetime_solar_kwh += delta_kwh
             self._last_solar_time = now
             self._last_solar_power_val = curr_solar
         else:
@@ -878,6 +880,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     power_kw = (power_w / 1000.0) if unit == "W" else power_w
                     delta_kwh = (power_kw * elapsed) / 3600.0
                     self.monthly_export_kwh += delta_kwh
+                    self.lifetime_export_kwh += delta_kwh
             self._last_export_time = now
             self._last_export_power_val = curr_export
         else:
@@ -895,9 +898,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 self.monthly_export_kwh = 0.0
 
-        self.lifetime_import_kwh = curr_import if not is_import_power else self.monthly_import_kwh
-        self.lifetime_export_kwh = curr_export if not is_export_power else self.monthly_export_kwh
-        self.lifetime_solar_kwh = curr_solar if not is_solar_power else self.monthly_solar_kwh
+        if not is_import_power:
+            self.lifetime_import_kwh = curr_import
+        if not is_export_power:
+            self.lifetime_export_kwh = curr_export
+        if not is_solar_power:
+            self.lifetime_solar_kwh = curr_solar
 
         # Split peak/off-peak consumption
         self.monthly_tou_offpeak_import_kwh = self.monthly_import_kwh * 0.60
@@ -915,7 +921,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         current_grid_price = marginal_rate + ft_rate
 
         self.monthly_solar_savings_thb = curr_self_consumption * marginal_rate
-        self.lifetime_solar_savings_thb = self.monthly_solar_savings_thb
+
+        lifetime_self_consumption = max(0.0, self.lifetime_solar_kwh - self.lifetime_export_kwh)
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            lifetime_savings_rate = (0.70 * self.active_tou_peak_rate) + (0.30 * self.active_tou_offpeak_rate)
+        else:
+            lifetime_savings_rate = marginal_rate
+
+        self.lifetime_solar_savings_thb = lifetime_self_consumption * lifetime_savings_rate
 
         sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
         monthly_solar_revenue_thb = self.monthly_export_kwh * sellback_rate
@@ -1101,7 +1114,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         # Update self properties and solar total benefits
         self.monthly_solar_savings_thb = total_solar_savings_thb
-        self.lifetime_solar_savings_thb = self.monthly_solar_savings_thb
+
+        lifetime_self_consumption = max(0.0, self.lifetime_solar_kwh - self.lifetime_export_kwh)
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            lifetime_savings_rate = (0.70 * self.active_tou_peak_rate) + (0.30 * self.active_tou_offpeak_rate)
+        else:
+            lifetime_savings_rate = marginal_rate
+
+        self.lifetime_solar_savings_thb = lifetime_self_consumption * lifetime_savings_rate
         monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + (self.monthly_export_kwh * sellback_rate)
         lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + (self.lifetime_export_kwh * sellback_rate)
 
