@@ -332,6 +332,9 @@
         peakVal = cumPeakKwh * peakRate;
         offpeakVal = cumOffpeakKwh * offpeakRate;
         bVal = peakVal + offpeakVal;
+
+        var dayPeakCost = dayPeakKwh * peakRate;
+        var dayOffpeakCost = dayOffpeakKwh * offpeakRate;
       } else {
         // Calculate progressive tiers for this day's cumulative runningKwh
         const t1Kwh = Math.min(item.runningKwh, 150);
@@ -357,6 +360,10 @@
         tier3: t3Val,
         peak: peakVal,
         offpeak: offpeakVal,
+        dayPeakCost: dayPeakCost || 0,
+        dayOffpeakCost: dayOffpeakCost || 0,
+        isWeekend: isWeekend || false,
+        dayKwh: item.dayKwh,
         ft: fVal,
         vat: vVal,
         total: dayCumulativeTotal,
@@ -1477,7 +1484,7 @@
                     const pPct = ((bar.peak / maxDayTotal) * 100).toFixed(1);
                     const opPct = ((bar.offpeak / maxDayTotal) * 100).toFixed(1);
                     return `
-                      <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Peak: ฿${bar.peak.toFixed(2)}, Off-Peak: ฿${bar.offpeak.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                      <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day} (${bar.isWeekend ? 'Weekend: 100% Off-Peak' : 'Weekday'}): Cumulative ฿${bar.total.toFixed(2)} | Today Added: +฿${(bar.dayPeakCost + bar.dayOffpeakCost).toFixed(2)} (Peak: +฿${bar.dayPeakCost.toFixed(2)}, Off-Peak: +฿${bar.dayOffpeakCost.toFixed(2)})">
                         <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
                         <div class="bar-piece seg-peak" style="height: ${pPct}%;"></div>
                         <div class="bar-piece seg-offpeak" style="height: ${opPct}%;"></div>
@@ -2141,7 +2148,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.1.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 
