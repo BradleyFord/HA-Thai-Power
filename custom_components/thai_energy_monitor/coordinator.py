@@ -621,12 +621,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.debug("Could not query recorder statistics: %s", err)
 
-        def get_daily_values(sensor_id: str, avg_val: float, seed_str: str) -> list[float]:
-            import random
-            random.seed(seed_str)  # deterministic random seed based on entity ID
-
+        def get_daily_values(sensor_id: str, total_monthly: float) -> list[float]:
             res = []
             start_date = start_dt.date()
+            avg_val = total_monthly / current_day if current_day > 0 else 0.0
 
             date_to_sum = {}
             date_to_change = {}
@@ -661,37 +659,43 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             max_state = max(date_to_sum.values()) if date_to_sum else 0.0
             is_lifetime_sensor = max_state > 500.0
 
-            for idx in range(30):
+            past_sum = 0.0
+            for idx in range(current_day - 1):
                 d_date = start_date + timedelta(days=idx)
                 prev_date = start_date + timedelta(days=idx - 1)
 
-                if idx + 1 <= current_day:
-                    if d_date in date_to_change and date_to_change[d_date] > 0.01:
-                        res.append(round(date_to_change[d_date], 3))
-                    elif d_date in date_to_sum:
-                        val_curr = date_to_sum[d_date]
-                        if is_lifetime_sensor:
-                            val_prev = date_to_sum.get(prev_date)
-                            if val_prev is not None and val_curr >= val_prev:
-                                delta = val_curr - val_prev
-                            else:
-                                delta = avg_val * random.uniform(0.85, 1.15)
+                if d_date in date_to_change and date_to_change[d_date] > 0.001:
+                    delta = date_to_change[d_date]
+                elif d_date in date_to_sum:
+                    val_curr = date_to_sum[d_date]
+                    if is_lifetime_sensor:
+                        val_prev = date_to_sum.get(prev_date)
+                        if val_prev is not None and val_curr >= val_prev:
+                            delta = val_curr - val_prev
                         else:
-                            # Daily resetting sensor: max state value is the daily consumption
-                            delta = val_curr
-                        res.append(round(delta, 3))
+                            delta = avg_val
                     else:
-                        noise = random.uniform(0.8, 1.2)
-                        res.append(round(avg_val * noise, 3))
+                        delta = val_curr
                 else:
-                    noise = random.uniform(0.9, 1.1)
-                    res.append(round(avg_val * noise, 3))
+                    delta = avg_val
+
+                delta_rounded = round(max(0.0, delta), 3)
+                res.append(delta_rounded)
+                past_sum += delta_rounded
+
+            # For current day (today): exact incremental value so far today
+            today_val = max(0.0, total_monthly - past_sum)
+            res.append(round(today_val, 3))
+
+            # For future days in the billing cycle: expected run-rate
+            for idx in range(current_day, 30):
+                res.append(round(avg_val, 3))
 
             return res
 
-        daily_import = get_daily_values(self.import_sensor_id, import_avg, "import_seed")
-        daily_solar = get_daily_values(self.solar_sensor_id, solar_avg, "solar_seed")
-        daily_export = get_daily_values(self.export_sensor_id, export_avg, "export_seed")
+        daily_import = get_daily_values(self.import_sensor_id, self.monthly_import_kwh)
+        daily_solar = get_daily_values(self.solar_sensor_id, self.monthly_solar_kwh)
+        daily_export = get_daily_values(self.export_sensor_id, self.monthly_export_kwh)
 
         # Guarantee self-consumption doesn't exceed production in chart rendering
         for idx in range(30):

@@ -2124,7 +2124,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.1.4 &bull; Home Assistant Custom Integration
       </div>
     `;
 
