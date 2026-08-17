@@ -581,12 +581,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return max(0.0, benefit - charge_cost)
 
     async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
-        """Query actual daily statistics from Home Assistant recorder database for source sensors."""
-        # Return cached result if fetched within the last 30 minutes (1800 seconds) and valid
+        """Query actual daily states directly from Home Assistant recorder database for source sensors."""
         if (
             self._last_recorder_fetch_time is not None
             and self._cached_recorder_history is not None
-            and (now - self._last_recorder_fetch_time).total_seconds() < 1800
+            and (now - self._last_recorder_fetch_time).total_seconds() < 900
             and self.monthly_import_kwh > 0.0
         ):
             return self._cached_recorder_history
@@ -598,119 +597,95 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             bkk_now = now
 
         current_day = max(1, self.get_billing_cycle_day(now))
-
         start_dt = self._get_billing_start_datetime(now)
         end_dt = now
 
-        stat_ids = [self.import_sensor_id, self.solar_sensor_id, self.export_sensor_id]
-        stats = {}
+        stat_ids = [sid for sid in (self.import_sensor_id, self.solar_sensor_id, self.export_sensor_id) if sid]
 
-        try:
-            stats = await statistics_during_period(
-                self.hass,
-                start_dt,
-                end_dt,
-                stat_ids,
-                "day",
-                None,
-                {"sum", "state", "max", "mean"}
-            )
-        except Exception as err:
-            _LOGGER.debug("Could not query recorder statistics: %s", err)
-
-        def get_daily_values(sensor_id: str, total_monthly: float) -> list[float]:
-            res = []
-            start_date = start_dt.date()
-            avg_val = total_monthly / current_day if current_day > 0 else 0.0
-
-            date_to_sum = {}
-            date_to_change = {}
-
-            sensor_stats = (stats.get(sensor_id) or []) if stats else []
-            sorted_stats = sorted(
-                sensor_stats,
-                key=lambda x: (
-                    x["start"]
-                    if isinstance(x.get("start"), (int, float))
-                    else (x["start"].timestamp() if isinstance(x.get("start"), datetime) else 0)
+        def _fetch_history_states():
+            try:
+                return get_significant_states(
+                    self.hass,
+                    start_time=start_dt - timedelta(hours=24),
+                    end_time=end_dt,
+                    entity_ids=stat_ids,
+                    significant_changes_only=False,
                 )
-            )
+            except Exception as err:
+                _LOGGER.debug("Could not query significant states for daily history: %s", err)
+                return {}
 
-            for entry in sorted_stats:
-                try:
-                    entry_start = entry.get("start")
-                    if isinstance(entry_start, (int, float)):
-                        entry_dt = datetime.fromtimestamp(entry_start, tz=zoneinfo.ZoneInfo("UTC"))
-                    elif isinstance(entry_start, datetime):
-                        entry_dt = entry_start
-                    else:
+        recorded_states = {}
+        try:
+            recorded_states = await get_instance(self.hass).async_add_executor_job(_fetch_history_states)
+        except Exception as err:
+            _LOGGER.debug("Executor error fetching recorder states: %s", err)
+
+        def extract_daily_series(entity_id: str, curr_sensor_val: float, total_monthly: float) -> list[float]:
+            entity_states = recorded_states.get(entity_id, []) if recorded_states else []
+            avg_run_rate = total_monthly / current_day if current_day > 0 else 0.0
+
+            valid_states = []
+            for s in entity_states:
+                if s.state not in ("unavailable", "unknown"):
+                    try:
+                        valid_states.append((s.last_updated.astimezone(bkk_tz), float(s.state)))
+                    except (ValueError, TypeError):
                         continue
 
-                    local_dt = entry_dt.astimezone(bkk_tz)
-                    d_key = local_dt.date()
+            if not valid_states:
+                # If no raw states available, use authentic average run-rate for past days
+                return [round(avg_run_rate, 3) for _ in range(30)]
 
-                    sum_change = entry.get("sum_change") or entry.get("change")
-                    if sum_change is not None and sum_change >= 0:
-                        date_to_change[d_key] = date_to_change.get(d_key, 0.0) + float(sum_change)
+            vals = [v for _, v in valid_states]
+            is_cumulative = max(vals) > 500.0 or (len(vals) > 1 and vals[-1] >= vals[0])
 
-                    val = entry.get("sum")
-                    if val is None:
-                        val = entry.get("max")
-                    if val is None:
-                        val = entry.get("state")
-                    if val is None:
-                        val = entry.get("mean")
+            def get_reading_at(target_dt: datetime) -> float:
+                candidates = [s for s in valid_states if s[0] <= target_dt]
+                if candidates:
+                    return candidates[-1][1]
+                return min(valid_states, key=lambda s: abs((s[0] - target_dt).total_seconds()))[1]
 
-                    if val is not None:
-                        date_to_sum[d_key] = float(val)
-                except Exception:
-                    continue
-
-            # Check if this sensor is a lifetime cumulative sensor
-            max_state = max(date_to_sum.values()) if date_to_sum else 0.0
-            is_lifetime_sensor = max_state > 500.0
-
-            past_sum = 0.0
+            daily_values = []
             for idx in range(current_day - 1):
-                d_date = start_date + timedelta(days=idx)
-                prev_date = start_date + timedelta(days=idx - 1)
+                day_start = start_dt + timedelta(days=idx)
+                day_end = start_dt + timedelta(days=idx + 1)
 
-                if d_date in date_to_change and date_to_change[d_date] > 0.001:
-                    delta = date_to_change[d_date]
-                elif d_date in date_to_sum:
-                    val_curr = date_to_sum[d_date]
-                    if is_lifetime_sensor:
-                        val_prev = date_to_sum.get(prev_date)
-                        if val_prev is not None and val_curr >= val_prev:
-                            delta = val_curr - val_prev
-                        else:
-                            delta = avg_val
-                    else:
-                        delta = val_curr
+                if is_cumulative:
+                    r_start = get_reading_at(day_start)
+                    r_end = get_reading_at(day_end)
+                    delta = max(0.0, r_end - r_start)
                 else:
-                    delta = avg_val
+                    day_vals = [v for dt, v in valid_states if day_start <= dt < day_end]
+                    delta = max(day_vals) if day_vals else 0.0
 
-                delta_rounded = round(max(0.0, delta), 3)
-                res.append(delta_rounded)
-                past_sum += delta_rounded
+                daily_values.append(round(delta, 3))
 
-            # For current day (today): exact incremental value so far today
-            today_val = max(0.0, total_monthly - past_sum)
-            if today_val == 0.0 and total_monthly > 0.0:
-                today_val = avg_val
-            res.append(round(today_val, 3))
+            # For today (Day current_day): from midnight today up to current live reading
+            today_start = start_dt + timedelta(days=current_day - 1)
+            if is_cumulative:
+                r_today_start = get_reading_at(today_start)
+                today_delta = max(0.0, curr_sensor_val - r_today_start)
+            else:
+                today_vals = [v for dt, v in valid_states if dt >= today_start]
+                today_delta = max(today_vals) if today_vals else (total_monthly - sum(daily_values))
 
-            # For future days in the billing cycle: expected run-rate
+            if today_delta == 0.0 and total_monthly > sum(daily_values):
+                today_delta = max(0.0, total_monthly - sum(daily_values))
+
+            daily_values.append(round(today_delta, 3))
+
+            # For future days in billing cycle: project average daily run-rate
             for idx in range(current_day, 30):
-                res.append(round(avg_val, 3))
+                daily_values.append(round(avg_run_rate, 3))
 
-            return res
+            return daily_values
 
-        daily_import = get_daily_values(self.import_sensor_id, self.monthly_import_kwh)
-        daily_solar = get_daily_values(self.solar_sensor_id, self.monthly_solar_kwh)
-        daily_export = get_daily_values(self.export_sensor_id, self.monthly_export_kwh)
+        daily_import = extract_daily_series(self.import_sensor_id, self._last_import_val or self.monthly_import_kwh, self.monthly_import_kwh)
+        daily_solar = extract_daily_series(self.solar_sensor_id, self._last_solar_val or self.monthly_solar_kwh, self.monthly_solar_kwh)
+        daily_export = extract_daily_series(self.export_sensor_id, self._last_export_val or self.monthly_export_kwh, self.monthly_export_kwh)
 
-        # Guarantee self-consumption doesn't exceed production in chart rendering
+        # Guarantee self-consumption doesn't exceed production
         for idx in range(30):
             if daily_export[idx] > daily_solar[idx]:
                 daily_export[idx] = daily_solar[idx]
