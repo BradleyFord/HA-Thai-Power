@@ -9,7 +9,12 @@
  * and direct Python coordinator baseline subtraction diagnostic panel.
  */
 
-class ThaiEnergyPanel extends HTMLElement {
+(() => {
+  if (customElements.get('thai-energy-panel')) {
+    return;
+  }
+
+  class ThaiEnergyPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -2119,7 +2124,7 @@ class ThaiEnergyPanel extends HTMLElement {
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.1.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 
@@ -2128,4 +2133,5 @@ class ThaiEnergyPanel extends HTMLElement {
   }
 }
 
-customElements.define('thai-energy-panel', ThaiEnergyPanel);
+  customElements.define('thai-energy-panel', ThaiEnergyPanel);
+})();
