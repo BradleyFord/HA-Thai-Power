@@ -278,11 +278,11 @@
     let pastUnscaledSolarSum = 0.0;
     for (let day = 1; day <= currentDay; day++) {
       let imp = pyImportHistory[day - 1];
-      let impVal = (imp !== undefined && imp !== null) ? parseFloat(imp) : avgDailyImport;
+      let impVal = (imp !== undefined && imp !== null && parseFloat(imp) > 0.001) ? parseFloat(imp) : avgDailyImport;
       pastUnscaledImportSum += impVal;
 
       let sol = pySolarHistory[day - 1];
-      let solVal = (sol !== undefined && sol !== null) ? parseFloat(sol) : avgDailySolar;
+      let solVal = (sol !== undefined && sol !== null && parseFloat(sol) > 0.001) ? parseFloat(sol) : avgDailySolar;
       pastUnscaledSolarSum += solVal;
     }
 
@@ -297,7 +297,7 @@
       let dayKwh = 0.0;
       if (isPastOrToday) {
         let rawKwh = pyImportHistory[day - 1];
-        let rawKwhVal = (rawKwh !== undefined && rawKwh !== null) ? parseFloat(rawKwh) : avgDailyImport;
+        let rawKwhVal = (rawKwh !== undefined && rawKwh !== null && parseFloat(rawKwh) > 0.001) ? parseFloat(rawKwh) : avgDailyImport;
         dayKwh = rawKwhVal * importScale;
       } else {
         dayKwh = avgDailyImport;
@@ -375,7 +375,7 @@
       let impKwh = 0.0;
       if (isPastOrToday) {
         let rawImp = pyImportHistory[i];
-        let rawImpVal = (rawImp !== undefined && rawImp !== null) ? parseFloat(rawImp) : avgDailyImport;
+        let rawImpVal = (rawImp !== undefined && rawImp !== null && parseFloat(rawImp) > 0.001) ? parseFloat(rawImp) : avgDailyImport;
         impKwh = rawImpVal * importScale;
       } else {
         impKwh = avgDailyImport;
@@ -384,14 +384,14 @@
       let solKwh = 0.0;
       if (isPastOrToday) {
         let rawSol = pySolarHistory[i];
-        let rawSolVal = (rawSol !== undefined && rawSol !== null) ? parseFloat(rawSol) : avgDailySolar;
+        let rawSolVal = (rawSol !== undefined && rawSol !== null && parseFloat(rawSol) > 0.001) ? parseFloat(rawSol) : avgDailySolar;
         solKwh = rawSolVal * solarScale;
       } else {
         solKwh = avgDailySolar;
       }
 
       let rawExp = pyExportHistory[i];
-      let expKwh = (rawExp !== undefined && rawExp !== null) ? parseFloat(rawExp) : avgDailyExport;
+      let expKwh = (rawExp !== undefined && rawExp !== null && parseFloat(rawExp) >= 0) ? parseFloat(rawExp) : avgDailyExport;
 
       const selfKwh = Math.max(0, solKwh - expKwh);
 
@@ -429,8 +429,10 @@
       const isPastOrToday = day <= currentDay;
       const solcastVal = solcastTargetKwh;
 
-      const prodVal = pySolarHistory[day - 1] !== undefined ? parseFloat(pySolarHistory[day - 1]) : 15.0;
-      const exportVal = pyExportHistory[day - 1] !== undefined ? parseFloat(pyExportHistory[day - 1]) : 4.0;
+      const rawProd = pySolarHistory[day - 1];
+      const prodVal = (rawProd !== undefined && rawProd !== null && parseFloat(rawProd) > 0.001) ? parseFloat(rawProd) : avgDailySolar;
+      const rawExp = pyExportHistory[day - 1];
+      const exportVal = (rawExp !== undefined && rawExp !== null && parseFloat(rawExp) >= 0) ? parseFloat(rawExp) : (exportKwhNum > 0 ? avgDailyExport : 0.0);
       const selfVal = Math.max(0, prodVal - exportVal);
 
       solarMonthlyTrends.push({
@@ -2139,7 +2141,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.1.5 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.1.6 &bull; Home Assistant Custom Integration
       </div>
     `;
 

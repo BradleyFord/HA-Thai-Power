@@ -582,11 +582,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
         """Query actual daily statistics from Home Assistant recorder database for source sensors."""
-        # Return cached result if fetched within the last 30 minutes (1800 seconds)
+        # Return cached result if fetched within the last 30 minutes (1800 seconds) and valid
         if (
             self._last_recorder_fetch_time is not None
             and self._cached_recorder_history is not None
             and (now - self._last_recorder_fetch_time).total_seconds() < 1800
+            and self.monthly_import_kwh > 0.0
         ):
             return self._cached_recorder_history
 
@@ -597,10 +598,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             bkk_now = now
 
         current_day = max(1, self.get_billing_cycle_day(now))
-
-        import_avg = max(10.0, self.monthly_import_kwh / current_day)
-        solar_avg = max(10.0, self.monthly_solar_kwh / current_day)
-        export_avg = max(1.0, self.monthly_export_kwh / current_day)
 
         start_dt = self._get_billing_start_datetime(now)
         end_dt = now
@@ -630,15 +627,29 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             date_to_change = {}
 
             sensor_stats = (stats.get(sensor_id) or []) if stats else []
-            sorted_stats = sorted(sensor_stats, key=lambda x: x["start"])
+            sorted_stats = sorted(
+                sensor_stats,
+                key=lambda x: (
+                    x["start"]
+                    if isinstance(x.get("start"), (int, float))
+                    else (x["start"].timestamp() if isinstance(x.get("start"), datetime) else 0)
+                )
+            )
 
             for entry in sorted_stats:
                 try:
-                    entry_start = entry["start"]
-                    local_dt = entry_start.astimezone(bkk_tz)
+                    entry_start = entry.get("start")
+                    if isinstance(entry_start, (int, float)):
+                        entry_dt = datetime.fromtimestamp(entry_start, tz=zoneinfo.ZoneInfo("UTC"))
+                    elif isinstance(entry_start, datetime):
+                        entry_dt = entry_start
+                    else:
+                        continue
+
+                    local_dt = entry_dt.astimezone(bkk_tz)
                     d_key = local_dt.date()
 
-                    sum_change = entry.get("sum_change")
+                    sum_change = entry.get("sum_change") or entry.get("change")
                     if sum_change is not None and sum_change >= 0:
                         date_to_change[d_key] = date_to_change.get(d_key, 0.0) + float(sum_change)
 
@@ -685,6 +696,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # For current day (today): exact incremental value so far today
             today_val = max(0.0, total_monthly - past_sum)
+            if today_val == 0.0 and total_monthly > 0.0:
+                today_val = avg_val
             res.append(round(today_val, 3))
 
             # For future days in the billing cycle: expected run-rate
@@ -707,8 +720,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "daily_solar_kwh_history": daily_solar,
             "daily_export_kwh_history": daily_export,
         }
-        self._cached_recorder_history = res_data
-        self._last_recorder_fetch_time = now
+        if self.monthly_import_kwh > 0.0:
+            self._cached_recorder_history = res_data
+            self._last_recorder_fetch_time = now
         return res_data
 
     def _is_power_sensor(self, entity_id: str, state_obj: Any) -> bool:
