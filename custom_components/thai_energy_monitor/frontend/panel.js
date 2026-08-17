@@ -881,8 +881,9 @@
     const pointsProdPast = getPointsSegment(d.solarMonthlyTrends, 'production', 0, currentDay - 1);
     const pointsProdFuture = getPointsSegment(d.solarMonthlyTrends, 'production', currentDay - 1, 29);
 
-    const pointsSelfPast = getPointsSegment(d.solarMonthlyTrends, 'selfConsumption', 0, currentDay - 1);
-    const pointsSelfFuture = getPointsSegment(d.solarMonthlyTrends, 'selfConsumption', currentDay - 1, 29);
+    const hasExport = d.solarMonthlyTrends.some(t => t.export > 0.05);
+    const pointsSelfPast = hasExport ? getPointsSegment(d.solarMonthlyTrends, 'selfConsumption', 0, currentDay - 1) : '';
+    const pointsSelfFuture = hasExport ? getPointsSegment(d.solarMonthlyTrends, 'selfConsumption', currentDay - 1, 29) : '';
 
     const pointsExportPast = getPointsSegment(d.solarMonthlyTrends, 'export', 0, currentDay - 1);
     const pointsExportFuture = getPointsSegment(d.solarMonthlyTrends, 'export', currentDay - 1, 29);
@@ -1685,17 +1686,17 @@
                   <!-- Trend 1: Solcast PV Forecast (Theoretical Maximum - Dashed Line) -->
                   <polyline points="${pointsSolcast}" fill="none" stroke="var(--warning-color, #ff9800)" stroke-width="2.5" stroke-dasharray="6,4" />
 
-                  <!-- Trend 2: Actual Solar Production (Thick Solid Green, Dashed Future) -->
-                  ${pointsProdPast ? `<polyline points="${pointsProdPast}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="4.0" />` : ''}
-                  ${pointsProdFuture ? `<polyline points="${pointsProdFuture}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="3.5" stroke-dasharray="4,4" opacity="0.4" />` : ''}
+                  <!-- Trend 2: Actual Solar Production (Consistent Solid Green History, Dashed Green Future) -->
+                  ${pointsProdPast ? `<polyline points="${pointsProdPast}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+                  ${pointsProdFuture ? `<polyline points="${pointsProdFuture}" fill="none" stroke="var(--success-color, #4caf50)" stroke-width="3.0" stroke-dasharray="4,4" opacity="0.6" stroke-linecap="round" stroke-linejoin="round" />` : ''}
 
-                  <!-- Trend 3: Internal Self-Consumption (Thin Solid Cyan, Dashed Future) - Overlaid on top of Production -->
-                  ${pointsSelfPast ? `<polyline points="${pointsSelfPast}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.0" />` : ''}
-                  ${pointsSelfFuture ? `<polyline points="${pointsSelfFuture}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.8" stroke-dasharray="4,4" opacity="0.4" />` : ''}
+                  <!-- Trend 3: Internal Self-Consumption (Rendered in Cyan only when Export > 0 to show divergence) -->
+                  ${pointsSelfPast ? `<polyline points="${pointsSelfPast}" fill="none" stroke="var(--primary-color, #00e5ff)" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+                  ${pointsSelfFuture ? `<polyline points="${pointsSelfFuture}" fill="none" stroke="var(--primary-color, #00e5ff)" stroke-width="2.0" stroke-dasharray="4,4" opacity="0.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
 
-                  <!-- Trend 4: Grid Export (Past - Solid Pink, Future - Dashed/Faded Pink) -->
-                  ${pointsExportPast ? `<polyline points="${pointsExportPast}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.0" />` : ''}
-                  ${pointsExportFuture ? `<polyline points="${pointsExportFuture}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="1.8" stroke-dasharray="4,4" opacity="0.4" />` : ''}
+                  <!-- Trend 4: Grid Export (Past - Solid Orange/Pink, Future - Dashed) -->
+                  ${pointsExportPast ? `<polyline points="${pointsExportPast}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+                  ${pointsExportFuture ? `<polyline points="${pointsExportFuture}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="1.8" stroke-dasharray="4,4" opacity="0.4" stroke-linecap="round" stroke-linejoin="round" />` : ''}
                 </svg>
 
                 <!-- X-Axis Labels (Days 1 to 30) -->
@@ -2151,7 +2152,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.2.0 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.2.1 &bull; Home Assistant Custom Integration
       </div>
     `;
 
