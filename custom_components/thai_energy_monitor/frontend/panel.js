@@ -269,9 +269,11 @@
     const offpeakRate = tariffCategory === '1.3.1' ? 2.6295 : 2.6369;
 
     const importKwhNum = parseFloat(importKwh) || 0;
-    const avgDailyImport = currentDay > 0 ? (importKwhNum / currentDay) : 15.0;
-    const avgDailySolar = currentDay > 0 ? (solarKwhNum / currentDay) : 15.0;
-    const avgDailyExport = currentDay > 0 ? (exportKwhNum / currentDay) : 2.0;
+    const nowTime = new Date();
+    const elapsedDaysFraction = Math.max(0.04, (currentDay - 1) + (nowTime.getHours() / 24.0) + (nowTime.getMinutes() / 1440.0));
+    const avgDailyImport = (importKwhNum > 0 && elapsedDaysFraction > 0) ? (importKwhNum / elapsedDaysFraction) : 15.0;
+    const avgDailySolar = (solarKwhNum > 0 && elapsedDaysFraction > 0) ? (solarKwhNum / elapsedDaysFraction) : 15.0;
+    const avgDailyExport = (exportKwhNum > 0 && elapsedDaysFraction > 0) ? (exportKwhNum / elapsedDaysFraction) : 2.0;
 
     // Calculate past days unscaled sums to normalize chart progression with actual accrued sensor readings
     let pastUnscaledImportSum = 0.0;
@@ -2152,7 +2154,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.2.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.2.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 

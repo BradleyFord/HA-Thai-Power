@@ -687,6 +687,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         start_dt = self._get_billing_start_datetime(now)
         end_dt = now
 
+        elapsed_sec = max(60.0, (now - start_dt).total_seconds())
+        elapsed_days_fraction = max(0.04, elapsed_sec / 86400.0)
+
         stat_ids = [sid for sid in (self.import_sensor_id, self.solar_sensor_id, self.export_sensor_id) if sid]
 
         def _fetch_history_states():
@@ -710,7 +713,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         def extract_daily_series(entity_id: str, curr_sensor_val: float, total_monthly: float) -> list[float]:
             entity_states = recorded_states.get(entity_id, []) if recorded_states else []
-            avg_run_rate = total_monthly / current_day if current_day > 0 else 0.0
+            avg_run_rate = total_monthly / elapsed_days_fraction if elapsed_days_fraction > 0 else 0.0
 
             valid_states = []
             for s in entity_states:
@@ -1113,14 +1116,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 (self.monthly_import_kwh * offpeak_ratio) * self.active_tou_offpeak_rate
             )
 
-        # Accrued bill to date prorates the fixed monthly service charge proportionally across elapsed days
-        prorated_service_charge = (service_charge / 30.0) * min(30, max(1, current_day))
+        # Accrued bill to date prorates the fixed monthly service charge proportionally across continuous elapsed days
+        billing_start_dt = self._get_billing_start_datetime(now)
+        elapsed_sec = max(60.0, (now - billing_start_dt).total_seconds())
+        elapsed_days_fraction = max(0.04, elapsed_sec / 86400.0)
+
+        prorated_service_charge = (service_charge / 30.0) * min(30.0, elapsed_days_fraction)
         accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
         accrued_vat_amount = accrued_subtotal * VAT_RATE
         monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
 
-        # 2. Project 30-day monthly usage based on active run-rate
-        projected_monthly_import = (self.monthly_import_kwh / max(1, current_day)) * 30.0
+        # 2. Project 30-day monthly usage based on continuous fractional run-rate (zero midnight sawtooth)
+        projected_monthly_import = (self.monthly_import_kwh / elapsed_days_fraction) * 30.0
 
         monthly_ft_charge = projected_monthly_import * ft_rate
         base_cost = 0.0
