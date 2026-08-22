@@ -24,8 +24,8 @@ from homeassistant.components.recorder.statistics import statistics_during_perio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_BESS_CAPACITY_KWH,
@@ -82,6 +82,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.entry = entry
         self.config_data = dict(entry.data)
+
+        # Storage Persistence Engine
+        self._store = Store(hass, 1, f"thai_energy_monitor_{entry.entry_id}")
 
         # Source Sensor Entity IDs
         self.import_sensor_id: str = entry.data[CONF_GRID_IMPORT_SENSOR]
@@ -168,6 +171,73 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.bess_12_months_data: list[dict[str, Any]] | None = None
         self._restored = False
 
+    async def _async_load_storage(self) -> None:
+        """Load persisted billing baselines and accumulators from Home Assistant storage."""
+        try:
+            data = await self._store.async_load()
+            if data and isinstance(data, dict):
+                now = dt_util.now()
+                current_billing_start = self._get_billing_start_datetime(now).isoformat()
+                stored_billing_start = data.get("billing_start_datetime")
+
+                # If stored data matches current cycle, restore baselines and monthly totals
+                if stored_billing_start == current_billing_start:
+                    if self.import_baseline_kwh is None and data.get("import_baseline_kwh") is not None:
+                        self.import_baseline_kwh = float(data["import_baseline_kwh"])
+                    if self.solar_baseline_kwh is None and data.get("solar_baseline_kwh") is not None:
+                        self.solar_baseline_kwh = float(data["solar_baseline_kwh"])
+                    if self.export_baseline_kwh is None and data.get("export_baseline_kwh") is not None:
+                        self.export_baseline_kwh = float(data["export_baseline_kwh"])
+
+                    if data.get("monthly_import_kwh", 0) > self.monthly_import_kwh:
+                        self.monthly_import_kwh = float(data["monthly_import_kwh"])
+                    if data.get("monthly_solar_kwh", 0) > self.monthly_solar_kwh:
+                        self.monthly_solar_kwh = float(data["monthly_solar_kwh"])
+                    if data.get("monthly_export_kwh", 0) > self.monthly_export_kwh:
+                        self.monthly_export_kwh = float(data["monthly_export_kwh"])
+
+                # Always restore lifetime accumulators and archived prior stats
+                if data.get("lifetime_solar_savings_thb", 0) > self.lifetime_solar_savings_thb:
+                    self.lifetime_solar_savings_thb = float(data["lifetime_solar_savings_thb"])
+                if data.get("lifetime_import_kwh", 0) > self.lifetime_import_kwh:
+                    self.lifetime_import_kwh = float(data["lifetime_import_kwh"])
+                if data.get("lifetime_solar_kwh", 0) > self.lifetime_solar_kwh:
+                    self.lifetime_solar_kwh = float(data["lifetime_solar_kwh"])
+                if data.get("lifetime_export_kwh", 0) > self.lifetime_export_kwh:
+                    self.lifetime_export_kwh = float(data["lifetime_export_kwh"])
+                if data.get("last_month_bill_thb", 0) > self.last_month_bill_thb:
+                    self.last_month_bill_thb = float(data["last_month_bill_thb"])
+                if data.get("last_month_import_kwh", 0) > self.last_month_import_kwh:
+                    self.last_month_import_kwh = float(data["last_month_import_kwh"])
+                if data.get("mea_points", 0) > self.mea_points:
+                    self.mea_points = int(data["mea_points"])
+        except Exception as err:
+            _LOGGER.debug("Could not load storage data: %s", err)
+
+    async def _async_save_storage(self) -> None:
+        """Save billing baselines and accumulators to Home Assistant storage."""
+        try:
+            now = dt_util.now()
+            data = {
+                "billing_start_datetime": self._get_billing_start_datetime(now).isoformat(),
+                "import_baseline_kwh": self.import_baseline_kwh,
+                "solar_baseline_kwh": self.solar_baseline_kwh,
+                "export_baseline_kwh": self.export_baseline_kwh,
+                "monthly_import_kwh": self.monthly_import_kwh,
+                "monthly_solar_kwh": self.monthly_solar_kwh,
+                "monthly_export_kwh": self.monthly_export_kwh,
+                "lifetime_solar_savings_thb": self.lifetime_solar_savings_thb,
+                "lifetime_import_kwh": self.lifetime_import_kwh,
+                "lifetime_solar_kwh": self.lifetime_solar_kwh,
+                "lifetime_export_kwh": self.lifetime_export_kwh,
+                "last_month_bill_thb": self.last_month_bill_thb,
+                "last_month_import_kwh": self.last_month_import_kwh,
+                "mea_points": self.mea_points,
+            }
+            await self._store.async_save(data)
+        except Exception as err:
+            _LOGGER.debug("Could not save storage data: %s", err)
+
     async def async_setup_listeners(self) -> None:
         """Subscribe to source sensor state change events asynchronously."""
         source_entities = list(set([
@@ -175,6 +245,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.export_sensor_id,
             self.solar_sensor_id,
         ]))
+        await self._async_load_storage()
         self.async_add_listener(self._async_handle_update)
         async_track_state_change_event(
             self.hass, source_entities, self._async_sensor_state_listener
@@ -356,15 +427,15 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         def _query():
             try:
+                # 1. Primary search: +/- 48h around target_dt
                 states = get_significant_states(
                     self.hass,
-                    start_time=target_dt - timedelta(hours=24),
-                    end_time=target_dt + timedelta(hours=24),
+                    start_time=target_dt - timedelta(hours=48),
+                    end_time=target_dt + timedelta(hours=48),
                     entity_ids=[entity_id],
                     significant_changes_only=False,
                 )
                 if entity_id in states and states[entity_id]:
-                    # Pick the state closest to target_dt
                     best_state = min(
                         states[entity_id],
                         key=lambda s: abs((s.last_updated - target_dt).total_seconds())
@@ -372,6 +443,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     st_val = best_state.state
                     if st_val not in ("unavailable", "unknown"):
                         return float(st_val)
+
+                # 2. Fallback: If recorder pruned data back to target_dt, find earliest valid state
+                states_all = get_significant_states(
+                    self.hass,
+                    start_time=target_dt,
+                    end_time=dt_util.now(),
+                    entity_ids=[entity_id],
+                    significant_changes_only=False,
+                )
+                if entity_id in states_all and states_all[entity_id]:
+                    for s in states_all[entity_id]:
+                        if s.state not in ("unavailable", "unknown"):
+                            try:
+                                return float(s.state)
+                            except (ValueError, TypeError):
+                                pass
             except Exception as err:
                 _LOGGER.debug("Could not fetch historical baseline state for %s: %s", entity_id, err)
             return None
@@ -873,15 +960,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             # Baseline Subtraction for Energy Sensors
             billing_start_dt = self._get_billing_start_datetime(now)
+            current_cycle_day = max(1, self.get_billing_cycle_day(now))
             if self.import_baseline_kwh is None and curr_import > 0.0:
                 fetched_base = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
-                if fetched_base is not None and fetched_base > 0.0:
+                if fetched_base is not None and 0.0 < fetched_base <= curr_import:
                     self.import_baseline_kwh = fetched_base
-                else:
+                elif self.monthly_import_kwh > 0.0 and curr_import > self.monthly_import_kwh:
+                    self.import_baseline_kwh = curr_import - self.monthly_import_kwh
+                elif current_cycle_day == 1:
                     self.import_baseline_kwh = curr_import
-            
+                else:
+                    self.import_baseline_kwh = max(0.0, curr_import - self.monthly_import_kwh)
+
             if curr_import >= (self.import_baseline_kwh or 0.0) and (self.import_baseline_kwh or 0.0) > 0.0:
                 self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
+            elif self.monthly_import_kwh > 0.0:
+                pass
             else:
                 self.monthly_import_kwh = 0.0
 
@@ -901,15 +995,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             # Baseline Subtraction for Energy Sensors
             billing_start_dt = self._get_billing_start_datetime(now)
+            current_cycle_day = max(1, self.get_billing_cycle_day(now))
             if self.solar_baseline_kwh is None and curr_solar > 0.0:
                 fetched_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, billing_start_dt)
-                if fetched_solar is not None and fetched_solar > 0.0:
+                if fetched_solar is not None and 0.0 < fetched_solar <= curr_solar:
                     self.solar_baseline_kwh = fetched_solar
-                else:
+                elif self.monthly_solar_kwh > 0.0 and curr_solar > self.monthly_solar_kwh:
+                    self.solar_baseline_kwh = curr_solar - self.monthly_solar_kwh
+                elif current_cycle_day == 1:
                     self.solar_baseline_kwh = curr_solar
-            
+                else:
+                    self.solar_baseline_kwh = max(0.0, curr_solar - self.monthly_solar_kwh)
+
             if curr_solar >= (self.solar_baseline_kwh or 0.0) and (self.solar_baseline_kwh or 0.0) > 0.0:
                 self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
+            elif self.monthly_solar_kwh > 0.0:
+                pass
             else:
                 self.monthly_solar_kwh = 0.0
 
@@ -929,15 +1030,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             # Baseline Subtraction for Energy Sensors
             billing_start_dt = self._get_billing_start_datetime(now)
+            current_cycle_day = max(1, self.get_billing_cycle_day(now))
             if self.export_baseline_kwh is None and curr_export > 0.0:
                 fetched_export = await self._async_get_sensor_baseline(self.export_sensor_id, billing_start_dt)
-                if fetched_export is not None and fetched_export > 0.0:
+                if fetched_export is not None and 0.0 < fetched_export <= curr_export:
                     self.export_baseline_kwh = fetched_export
-                else:
+                elif self.monthly_export_kwh > 0.0 and curr_export > self.monthly_export_kwh:
+                    self.export_baseline_kwh = curr_export - self.monthly_export_kwh
+                elif current_cycle_day == 1:
                     self.export_baseline_kwh = curr_export
-            
+                else:
+                    self.export_baseline_kwh = max(0.0, curr_export - self.monthly_export_kwh)
+
             if curr_export >= (self.export_baseline_kwh or 0.0) and (self.export_baseline_kwh or 0.0) > 0.0:
                 self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
+            elif self.monthly_export_kwh > 0.0:
+                pass
             else:
                 self.monthly_export_kwh = 0.0
 
@@ -1231,6 +1339,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
             accrued_vat_amount = accrued_subtotal * VAT_RATE
             monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
+
+        self.hass.async_create_task(self._async_save_storage())
 
         return {
             "tou_window_status": "Off-Peak" if is_offpeak else "Peak",
