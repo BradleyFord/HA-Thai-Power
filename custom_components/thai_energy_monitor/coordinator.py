@@ -896,26 +896,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.outage_history = self.outage_history[-50:]
                     self.outage_start_time = None
 
-        if not self.outage_history:
-            # Populate highly realistic default mock outages from the past cycle
-            mock_time1 = now - timedelta(days=6, hours=4)
-            mock_time2 = now - timedelta(days=2, hours=10)
-            self.outage_history = [
-                {
-                    "start": mock_time1.strftime("%Y-%m-%d 14:15:22"),
-                    "end": (mock_time1 + timedelta(minutes=11, seconds=48)).strftime("%Y-%m-%d 14:27:10"),
-                    "duration": "11m 48s",
-                    "duration_seconds": 708.0
-                },
-                {
-                    "start": mock_time2.strftime("%Y-%m-%d 02:04:15"),
-                    "end": (mock_time2 + timedelta(hours=1, minutes=2, seconds=25)).strftime("%Y-%m-%d 03:06:40"),
-                    "duration": "1h 2m",
-                    "duration_seconds": 3745.0
-                }
-            ]
-            self.outage_count = len(self.outage_history)
-            self.total_outage_seconds = sum(item["duration_seconds"] for item in self.outage_history)
+        # Outage tracking operates strictly on live grid state changes (no mock fallbacks)
 
         try:
             curr_import = float(import_state.state) if import_state and import_state.state not in ("unavailable", "unknown") else 0.0
