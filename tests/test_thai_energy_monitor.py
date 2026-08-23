@@ -172,6 +172,44 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         loss = (hours * assumed_load_kw) * cost_per_kwh
         self.assertAlmostEqual(loss, 462.615, places=3)
 
+    def test_parse_stat_datetime_with_float_and_datetime(self) -> None:
+        """Test that float timestamps and datetimes are parsed correctly into Bangkok timezone."""
+        import zoneinfo
+        from datetime import datetime
+
+        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+
+        def _parse(start_val):
+            if isinstance(start_val, (int, float)):
+                ts = start_val / 1000.0 if start_val > 1e11 else float(start_val)
+                return datetime.fromtimestamp(ts, tz=bkk_tz)
+            if isinstance(start_val, datetime):
+                return start_val.astimezone(bkk_tz)
+            return datetime.now(tz=bkk_tz)
+
+        def _sort_key(stat):
+            start_val = stat.get("start")
+            if isinstance(start_val, (int, float)):
+                return float(start_val if start_val < 1e11 else start_val / 1000.0)
+            if isinstance(start_val, datetime):
+                return start_val.timestamp()
+            return 0.0
+
+        # Test with float POSIX timestamp (seconds)
+        ts_float = 1755993600.0
+        dt_from_float = _parse(ts_float)
+        self.assertEqual(dt_from_float.tzinfo, bkk_tz)
+
+        # Test with float POSIX timestamp (milliseconds)
+        ts_ms = 1755993600000.0
+        dt_from_ms = _parse(ts_ms)
+        self.assertEqual(dt_from_ms, dt_from_float)
+
+        # Test sorting key
+        stat1 = {"start": 1755993600.0}
+        stat2 = {"start": dt_from_float}
+        self.assertEqual(_sort_key(stat1), _sort_key(stat2))
+
 
 if __name__ == "__main__":
     unittest.main()

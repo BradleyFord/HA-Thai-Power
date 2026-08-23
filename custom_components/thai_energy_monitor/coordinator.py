@@ -65,6 +65,26 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def parse_stat_datetime(start_val: Any, tz: zoneinfo.ZoneInfo) -> datetime:
+    """Parse LTS statistic start value (timestamp float or datetime) into a timezone-aware datetime."""
+    if isinstance(start_val, (int, float)):
+        ts = start_val / 1000.0 if start_val > 1e11 else float(start_val)
+        return datetime.fromtimestamp(ts, tz=tz)
+    if isinstance(start_val, datetime):
+        return start_val.astimezone(tz)
+    return dt_util.now().astimezone(tz)
+
+
+def get_stat_sort_key(stat: dict[str, Any]) -> float:
+    """Extract numeric timestamp for sorting LTS statistics dictionaries chronologically."""
+    start_val = stat.get("start")
+    if isinstance(start_val, (int, float)):
+        return float(start_val if start_val < 1e11 else start_val / 1000.0)
+    if isinstance(start_val, datetime):
+        return start_val.timestamp()
+    return 0.0
+
+
 class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator to manage polling-free event updates and tariff mathematics."""
 
@@ -283,16 +303,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update callback when data is refreshed."""
         pass
 
-    def is_tou_offpeak(self, dt: datetime) -> bool:
+    def is_tou_offpeak(self, dt: datetime | float | int) -> bool:
         """Evaluate if datetime falls within TOU Off-Peak window in Thailand Standard Time.
 
         Uses Home Assistant Workday integration if available, falling back to calendar rules.
         """
-        try:
-            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-            bkk_dt = dt.astimezone(bkk_tz)
-        except Exception:
-            bkk_dt = dt.astimezone(timezone(timedelta(hours=7)))
+        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+        bkk_dt = parse_stat_datetime(dt, bkk_tz)
 
         # 1. Check HA Workday Integration binary sensor (Highest Precedence)
         workday_state = self._get_workday_state()
@@ -1426,7 +1443,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     statistic_ids=[self.import_sensor_id],
                     period="hour",
                     units=None,
-                    types={"sum", "state"},
+                    types={"sum", "state", "change"},
                 )
             except Exception as err:
                 _LOGGER.debug("Could not query 12-month hourly statistics: %s", err)
@@ -1440,19 +1457,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Executor error for 12-month stats: %s", err)
 
         # Sort stats chronologically
-        import_stats = sorted(import_stats, key=lambda x: x["start"])
+        import_stats = sorted(import_stats, key=get_stat_sort_key)
         
         # Group hourly consumption by local Year-Month bucket
-        monthly_groups = {} # "2025-08" -> {"total": 0.0, "peak": 0.0, "offpeak": 0.0}
+        monthly_groups = {}  # "2025-08" -> {"total": 0.0, "peak": 0.0, "offpeak": 0.0}
         
         for i in range(len(import_stats)):
             entry = import_stats[i]
-            entry_start = entry["start"]
-            local_dt = entry_start.astimezone(bkk_tz)
+            local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
             month_key = local_dt.strftime("%Y-%m")
             
             # Determine change in kWh during this hour
-            kwh = entry.get("sum_change")
+            kwh = entry.get("change") or entry.get("sum_change")
             if kwh is None and i > 0:
                 prev_sum = import_stats[i-1].get("sum")
                 curr_sum = entry.get("sum")
@@ -1466,7 +1482,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if kwh > 50.0:
                 kwh = 1.5
                 
-            is_off = self.is_tou_offpeak(entry_start)
+            is_off = self.is_tou_offpeak(local_dt)
             
             if month_key not in monthly_groups:
                 monthly_groups[month_key] = {"total": 0.0, "peak": 0.0, "offpeak": 0.0}
@@ -1554,7 +1570,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     statistic_ids=bess_stat_ids,
                     period="hour",
                     units=None,
-                    types={"sum", "state"},
+                    types={"sum", "state", "change"},
                 )
             except Exception as err:
                 _LOGGER.debug("Could not query 12-month BESS statistics: %s", err)
@@ -1572,18 +1588,17 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Executor error for BESS stats: %s", err)
 
         # Sort stats chronologically
-        export_stats = sorted(export_stats, key=lambda x: x["start"])
-        import_stats = sorted(import_stats, key=lambda x: x["start"])
+        export_stats = sorted(export_stats, key=get_stat_sort_key)
+        import_stats = sorted(import_stats, key=get_stat_sort_key)
         
         # Group hourly export by Year-Month-Day bucket
-        daily_export_groups = {} # "2025-08-15" -> export_kwh
+        daily_export_groups = {}  # "2025-08-15" -> export_kwh
         for i in range(len(export_stats)):
             entry = export_stats[i]
-            entry_start = entry["start"]
-            local_dt = entry_start.astimezone(bkk_tz)
+            local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
             day_key = local_dt.strftime("%Y-%m-%d")
             
-            kwh = entry.get("sum_change")
+            kwh = entry.get("change") or entry.get("sum_change")
             if kwh is None and i > 0:
                 prev_sum = export_stats[i-1].get("sum")
                 curr_sum = entry.get("sum")
@@ -1593,21 +1608,20 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if kwh is None or kwh < 0.0:
                 kwh = 0.0
             if kwh > 50.0:
-                kwh = 1.0 # cap anomaly
+                kwh = 1.0  # cap anomaly
                 
             if day_key not in daily_export_groups:
                 daily_export_groups[day_key] = 0.0
             daily_export_groups[day_key] += kwh
 
         # Group hourly import by Year-Month-Day bucket
-        daily_import_groups = {} # "2025-08-15" -> import_kwh
+        daily_import_groups = {}  # "2025-08-15" -> import_kwh
         for i in range(len(import_stats)):
             entry = import_stats[i]
-            entry_start = entry["start"]
-            local_dt = entry_start.astimezone(bkk_tz)
+            local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
             day_key = local_dt.strftime("%Y-%m-%d")
             
-            kwh = entry.get("sum_change")
+            kwh = entry.get("change") or entry.get("sum_change")
             if kwh is None and i > 0:
                 prev_sum = import_stats[i-1].get("sum")
                 curr_sum = entry.get("sum")
@@ -1617,7 +1631,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if kwh is None or kwh < 0.0:
                 kwh = 0.0
             if kwh > 50.0:
-                kwh = 1.5 # cap anomaly
+                kwh = 1.5  # cap anomaly
                 
             if day_key not in daily_import_groups:
                 daily_import_groups[day_key] = 0.0
