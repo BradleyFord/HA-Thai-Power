@@ -124,13 +124,7 @@ async def async_setup_entry(
             coordinator, entry, "bess_simulated_savings_thb", "BESS Storage Simulated Savings", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),
 
-        # --- MEA Gamification & Outages ---
-        ThaiEnergyCostSensor(
-            coordinator, entry, "mea_points", "MEA Virtual Points Balance", "pts", None, SensorStateClass.TOTAL_INCREASING
-        ),
-        ThaiEnergyCostSensor(
-            coordinator, entry, "mea_points_cash_value", "MEA Points Cash Value", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
-        ),
+        # --- Grid Outages & Resilience Tracking ---
         ThaiEnergyCostSensor(
             coordinator, entry, "economic_outage_loss_thb", "Grid Outage Economic Cost", "THB", SensorDeviceClass.MONETARY, SensorStateClass.TOTAL
         ),

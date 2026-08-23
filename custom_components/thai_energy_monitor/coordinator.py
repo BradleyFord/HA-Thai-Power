@@ -43,10 +43,6 @@ from .const import (
     DEFAULT_OUTAGE_COST_PER_KWH,
     DEFAULT_SOLAR_SELLBACK,
     DOMAIN,
-    MEA_POINT_CASH_CONVERSION,
-    MEA_POINTS_EBILL_MONTHLY,
-    MEA_POINTS_EPAYMENT_MONTHLY,
-    MEA_POINTS_INITIAL_BONUS,
     PROVIDER_MEA,
     TARIFF_1_1,
     TARIFF_1_1_PSO_SUBSIDY_LIMIT,
@@ -154,15 +150,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.bess_simulated_savings_thb: float = 0.0
         self.bess_capex_cost: float = float(entry.data.get("bess_capex_cost", 50000.0))
 
-        # MEA Gamification Accumulator
-        self.mea_points: int = MEA_POINTS_INITIAL_BONUS if entry.data.get(CONF_UTILITY_PROVIDER) == PROVIDER_MEA else 0
-
         # Grid Outage & Resilience Tracking
         self.is_grid_outage: bool = False
         self.outage_start_time: datetime | None = None
         self.total_outage_seconds: float = 0.0
         self.outage_count: int = 0
         self.outage_history: list[dict[str, Any]] = []
+        self._has_seen_active_grid: bool = False
 
         # Tariff 1.1 >150 kWh consecutive high months tracking
         self.consecutive_high_months: int = 0
@@ -209,8 +203,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.last_month_bill_thb = float(data["last_month_bill_thb"])
                 if data.get("last_month_import_kwh", 0) > self.last_month_import_kwh:
                     self.last_month_import_kwh = float(data["last_month_import_kwh"])
-                if data.get("mea_points", 0) > self.mea_points:
-                    self.mea_points = int(data["mea_points"])
         except Exception as err:
             _LOGGER.debug("Could not load storage data: %s", err)
 
@@ -232,7 +224,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "lifetime_export_kwh": self.lifetime_export_kwh,
                 "last_month_bill_thb": self.last_month_bill_thb,
                 "last_month_import_kwh": self.last_month_import_kwh,
-                "mea_points": self.mea_points,
             }
             await self._store.async_save(data)
         except Exception as err:
@@ -291,13 +282,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _async_handle_update(self) -> None:
         """Update callback when data is refreshed."""
         pass
-
-    @callback
-    def async_adjust_mea_points(self, points_delta: int) -> None:
-        """Adjust MEA points balance (positive to add, negative to redeem)."""
-        self.mea_points = max(0, self.mea_points + points_delta)
-        _LOGGER.info("Adjusted MEA points by %d. New balance: %d", points_delta, self.mea_points)
-        self.hass.async_create_task(self.async_refresh())
 
     def is_tou_offpeak(self, dt: datetime) -> bool:
         """Evaluate if datetime falls within TOU Off-Peak window in Thailand Standard Time.
@@ -564,12 +548,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.data:
                 self.last_month_bill_thb = self.data.get("monthly_estimated_bill", 0.0)
             self.last_month_import_kwh = self.monthly_import_kwh
-
-            if self.config_data.get(CONF_UTILITY_PROVIDER) == PROVIDER_MEA:
-                if self.config_data.get(CONF_MEA_EBILL, False):
-                    self.mea_points += MEA_POINTS_EBILL_MONTHLY
-                if self.config_data.get(CONF_MEA_EPAYMENT, False):
-                    self.mea_points += MEA_POINTS_EPAYMENT_MONTHLY
 
             self.import_baseline_kwh = self._last_import_val
             self.solar_baseline_kwh = self._last_solar_val
@@ -888,37 +866,50 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         export_state = self.hass.states.get(self.export_sensor_id) if not self.is_single_bidirectional_sensor else import_state
         solar_state = self.hass.states.get(self.solar_sensor_id)
 
+        # Grid Outage & Resilience Tracking:
+        # Protect against false outages during Home Assistant restart / integration boot.
+        # An outage is only logged if Home Assistant is fully running (hass.is_running is True)
+        # and the grid sensor was previously active and online.
+        if import_state is not None and import_state.state not in ("unavailable", "unknown"):
+            self._has_seen_active_grid = True
+
         if import_state is None or import_state.state in ("unavailable", "unknown"):
-            if not self.is_grid_outage:
-                self.is_grid_outage = True
-                self.outage_start_time = now
-                self.outage_count += 1
+            if self.hass.is_running and self._has_seen_active_grid:
+                if not self.is_grid_outage:
+                    self.is_grid_outage = True
+                    self.outage_start_time = now
+                    self.outage_count += 1
         else:
             if self.is_grid_outage:
                 self.is_grid_outage = False
                 if self.outage_start_time:
                     duration = (now - self.outage_start_time).total_seconds()
-                    self.total_outage_seconds += duration
-                    
-                    bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-                    local_start = self.outage_start_time.astimezone(bkk_tz)
-                    local_end = now.astimezone(bkk_tz)
-                    
-                    mins = int(duration // 60)
-                    secs = int(duration % 60)
-                    duration_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-                    if mins >= 60:
-                        hrs = mins // 60
-                        mins = mins % 60
-                        duration_str = f"{hrs}h {mins}m"
-                        
-                    self.outage_history.append({
-                        "start": local_start.strftime("%Y-%m-%d %H:%M:%S"),
-                        "end": local_end.strftime("%Y-%m-%d %H:%M:%S"),
-                        "duration": duration_str,
-                        "duration_seconds": round(duration, 1)
-                    })
-                    self.outage_history = self.outage_history[-50:]
+                    # Only record genuine power outages (lasting 10 seconds or longer)
+                    if duration >= 10.0:
+                        self.total_outage_seconds += duration
+
+                        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+                        local_start = self.outage_start_time.astimezone(bkk_tz)
+                        local_end = now.astimezone(bkk_tz)
+
+                        mins = int(duration // 60)
+                        secs = int(duration % 60)
+                        duration_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                        if mins >= 60:
+                            hrs = mins // 60
+                            mins = mins % 60
+                            duration_str = f"{hrs}h {mins}m"
+
+                        self.outage_history.append({
+                            "start": local_start.strftime("%Y-%m-%d %H:%M:%S"),
+                            "end": local_end.strftime("%Y-%m-%d %H:%M:%S"),
+                            "duration": duration_str,
+                            "duration_seconds": round(duration, 1),
+                        })
+                        self.outage_history = self.outage_history[-50:]
+                    else:
+                        # Revert outage count increment for transient blip < 10s
+                        self.outage_count = max(0, self.outage_count - 1)
                     self.outage_start_time = None
 
         # Outage tracking operates strictly on live grid state changes (no mock fallbacks)
@@ -1177,7 +1168,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
 
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
-        mea_points_cash_value = self.mea_points * MEA_POINT_CASH_CONVERSION
         outage_hours = self.total_outage_seconds / 3600.0
         economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
 
@@ -1404,9 +1394,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "bess_simulated_savings_thb": round(self.bess_simulated_savings_thb, 2),
             "bess_capex_cost": self.bess_capex_cost,
             
-            # MEA Gamification & Outages
-            "mea_points": self.mea_points,
-            "mea_points_cash_value": round(mea_points_cash_value, 2),
+            # Grid Outages & Resilience Tracking
             "is_grid_outage": self.is_grid_outage,
             "outage_count": self.outage_count,
             "total_outage_seconds": self.total_outage_seconds,
@@ -1734,4 +1722,14 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("Calculated 12-month BESS lookback simulation with %d months", len(bess_lookback_data))
         
         # Trigger coordinator data update notification so frontend redraws
+        self.async_set_updated_data(self.data)
+
+    def reset_outage_statistics(self) -> None:
+        """Reset grid outage incident counts, cumulative downtime, and history log."""
+        self.is_grid_outage = False
+        self.outage_start_time = None
+        self.total_outage_seconds = 0.0
+        self.outage_count = 0
+        self.outage_history = []
+        _LOGGER.info("Reset grid outage tracking statistics to zero")
         self.async_set_updated_data(self.data)

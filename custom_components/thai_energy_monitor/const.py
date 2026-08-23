@@ -10,7 +10,7 @@ from typing import Final
 # Integration Domain & Identifiers
 DOMAIN: Final[str] = "thai_energy_monitor"
 ATTRIBUTION: Final[str] = "Data provided by Thailand Energy & Solar Monitor"
-VERSION: Final[str] = "2.2.7"
+VERSION: Final[str] = "2.2.8"
 
 # Configuration Entry Keys
 CONF_UTILITY_PROVIDER: Final[str] = "utility_provider"
@@ -89,9 +89,3 @@ TARIFF_1_3_1_SERVICE_CHARGE: Final[float] = 312.24
 TARIFF_1_3_2_PEAK: Final[float] = 5.7982
 TARIFF_1_3_2_OFFPEAK: Final[float] = 2.6369
 TARIFF_1_3_2_SERVICE_CHARGE: Final[float] = 38.22
-
-# MEA Point Gamification Rewards
-MEA_POINTS_INITIAL_BONUS: Final[int] = 1000
-MEA_POINTS_EBILL_MONTHLY: Final[int] = 30
-MEA_POINTS_EPAYMENT_MONTHLY: Final[int] = 80
-MEA_POINT_CASH_CONVERSION: Final[float] = 0.1

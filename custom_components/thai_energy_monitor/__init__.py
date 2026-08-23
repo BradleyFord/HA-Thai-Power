@@ -35,12 +35,6 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
-SERVICE_ADJUST_MEA_POINTS = "adjust_mea_points"
-SERVICE_SCHEMA_ADJUST_MEA_POINTS = vol.Schema(
-    {
-        vol.Required("points_delta"): vol.Coerce(int),
-    }
-)
 SERVICE_TRIGGER_12_MONTH_LOOKBACK = "trigger_12_month_lookback"
 SERVICE_TRIGGER_BESS_LOOKBACK = "trigger_bess_lookback"
 
@@ -172,19 +166,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Forward setup to sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Register custom service to adjust / redeem MEA points
-    async def async_handle_adjust_mea_points(call: ServiceCall) -> None:
-        points_delta = int(call.data["points_delta"])
-        coordinator.async_adjust_mea_points(points_delta)
-
-    if not hass.services.has_service(DOMAIN, SERVICE_ADJUST_MEA_POINTS):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_ADJUST_MEA_POINTS,
-            async_handle_adjust_mea_points,
-            schema=SERVICE_SCHEMA_ADJUST_MEA_POINTS,
-        )
 
     # Register custom service to trigger 12-month historical lookback comparison
     async def async_handle_trigger_12_month_lookback(call: ServiceCall) -> None:
@@ -320,6 +301,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=SERVICE_SCHEMA_CONFIGURE_SETTINGS,
         )
 
+    # Register service to reset grid outage tracking statistics
+    SERVICE_RESET_OUTAGE_HISTORY = "reset_outage_history"
+
+    async def async_handle_reset_outage_history(call: ServiceCall) -> None:
+        coordinator.reset_outage_statistics()
+        await coordinator.async_request_refresh()
+
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_OUTAGE_HISTORY):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_RESET_OUTAGE_HISTORY,
+            async_handle_reset_outage_history,
+        )
+
     # --- Modern Asynchronous Frontend Registration ---
     frontend_path = hass.config.path("custom_components/thai_energy_monitor/frontend")
 
@@ -344,7 +339,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=2.2.7",
+                    "js_url": "/thai_energy_ui/panel.js?v=2.2.8",
                 }
             },
             require_admin=False,
@@ -367,11 +362,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 frontend.async_remove_panel(hass, "thai-energy-dashboard")
             except Exception:
                 pass
-            hass.services.async_remove(DOMAIN, SERVICE_ADJUST_MEA_POINTS)
             hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK)
             try:
                 hass.services.async_remove(DOMAIN, "configure_bess")
                 hass.services.async_remove(DOMAIN, "configure_settings")
+                hass.services.async_remove(DOMAIN, "reset_outage_history")
             except Exception:
                 pass
 

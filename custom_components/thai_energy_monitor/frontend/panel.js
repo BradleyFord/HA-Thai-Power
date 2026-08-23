@@ -512,8 +512,6 @@
       sellbackRate: getEntityState('sensor.solar_buy_back_rate') || getAttribute(billEntityId, 'solar_sellback_rate') || '2.20',
       tariffDiff: getEntityState('sensor.predictive_tariff_difference'),
       bessSavings: getEntityState('sensor.bess_storage_simulated_savings'),
-      meaPoints: getEntityState('sensor.mea_virtual_points_balance'),
-      meaCash: getEntityState('sensor.mea_points_cash_value'),
       outageCost: getEntityState('sensor.grid_outage_economic_cost'),
       outageCount: getEntityState('sensor.grid_outage_incident_count'),
       lastMonthBill: getAttribute(billEntityId, 'last_month_bill_thb') || '0.00',
@@ -674,41 +672,6 @@
             }, 3000);
           });
         }
-      });
-    }
-
-    const btnAdjustMea = shadow.getElementById('btn-adjust-mea-points');
-    const inputMeaDelta = shadow.getElementById('input-mea-points-delta');
-    if (btnAdjustMea && inputMeaDelta) {
-      btnAdjustMea.addEventListener('click', () => {
-        const val = parseInt(inputMeaDelta.value, 10);
-        if (isNaN(val) || val === 0) return;
-        const origText = btnAdjustMea.innerHTML;
-        btnAdjustMea.disabled = true;
-        btnAdjustMea.innerHTML = '⏳ Updating...';
-
-        this._hass.callService('thai_energy_monitor', 'adjust_mea_points', {
-          points_delta: val
-        }).then(() => {
-          btnAdjustMea.innerHTML = '✅ Adjusted!';
-          btnAdjustMea.style.backgroundColor = 'var(--success-color, #4caf50)';
-          inputMeaDelta.value = '';
-          setTimeout(() => {
-            btnAdjustMea.innerHTML = origText;
-            btnAdjustMea.style.backgroundColor = 'var(--primary-color, #03a9f4)';
-            btnAdjustMea.disabled = false;
-          }, 1500);
-        }).catch((err) => {
-          console.error("MEA points adjustment failed:", err);
-          btnAdjustMea.innerHTML = '❌ Failed!';
-          btnAdjustMea.style.backgroundColor = 'var(--error-color, #f44336)';
-          inputMeaDelta.value = '';
-          setTimeout(() => {
-            btnAdjustMea.innerHTML = origText;
-            btnAdjustMea.style.backgroundColor = 'var(--primary-color, #03a9f4)';
-            btnAdjustMea.disabled = false;
-          }, 3000);
-        });
       });
     }
 
@@ -1378,9 +1341,6 @@
         <button class="tab-btn ${this._activeTab === 'predictive' ? 'active' : ''}" data-tab="predictive">
           Tariff Optimizer
         </button>
-        <button class="tab-btn ${this._activeTab === 'rewards' ? 'active' : ''}" data-tab="rewards">
-          MEA Rewards
-        </button>
         <button class="tab-btn ${this._activeTab === 'outages' ? 'active' : ''}" data-tab="outages">
           Grid Outages
         </button>
@@ -1657,12 +1617,12 @@
 
           <!-- Full Width 30-Day Multi-Trend Solar SVG Line Chart -->
           <div class="card full-width">
-            <h2>Billing Month Solar Performance Trends (Solcast Max vs Actuals Line Chart)</h2>
+            <h2>Billing Month Solar Performance Trends</h2>
             <div class="chart-legend">
-              <div class="legend-item"><div class="legend-line-solcast"></div> 1. Solcast PV Forecast (Theoretical Max)</div>
-              <div class="legend-item"><div class="legend-line-prod"></div> 2. Actual Solar Production (Solid = History, Dashed = Future)</div>
-              <div class="legend-item"><div class="legend-line-self"></div> 3. Internal Self-Consumption (Solid = History, Dashed = Future)</div>
-              <div class="legend-item"><div class="legend-line-export"></div> 4. Grid Export (Solid = History, Dashed = Future)</div>
+              <div class="legend-item"><div class="legend-line-solcast"></div> 1. Solcast PV Forecast</div>
+              <div class="legend-item"><div class="legend-line-prod"></div> 2. Actual Solar Production</div>
+              <div class="legend-item"><div class="legend-line-self"></div> 3. Internal Self-Consumption</div>
+              <div class="legend-item"><div class="legend-line-export"></div> 4. Grid Export</div>
             </div>
 
             <div class="chart-wrapper">
@@ -1716,11 +1676,10 @@
 
             <div class="note-box">
               Full 30-day billing month multi-line performance chart trending:
-              <strong style="color: var(--warning-color, #ff9800);">Solcast PV Forecast</strong> (Theoretical Maximum boundary) &bull;
+              <strong style="color: var(--warning-color, #ff9800);">Solcast PV Forecast</strong> &bull;
               <strong style="color: var(--success-color, #4caf50);">Actual Solar Production</strong> &bull;
               <strong style="color: var(--primary-color, #03a9f4);">Internal Self-Consumption</strong> &bull;
               <strong style="color: var(--accent-color, #e91e63);">Grid Export</strong>.
-              (Note: Solid lines indicate actual measured history, dashed/transparent lines indicate future run-rate prediction for the cycle).
             </div>
           </div>
         </div>
@@ -1960,43 +1919,7 @@
         </div>
       ` : ''}
 
-      <!-- Tab 4: MEA Rewards -->
-      ${this._activeTab === 'rewards' ? `
-        <div class="grid">
-          <div class="card full-width">
-            <h2>MEA Rewards Gamification</h2>
-            <div class="metric-main accent">${d.meaPoints} <span style="font-size: 20px;">Points</span></div>
-            <div class="table-rows">
-              <div class="row">
-                <span class="label">Cash Fiat Discount Equivalent</span>
-                <span class="val accent">฿${d.meaCash} Discount</span>
-              </div>
-              <div class="row">
-                <span class="label">Conversion Benchmark</span>
-                <span class="val">1 Point = 0.10 THB</span>
-              </div>
-              <div class="row">
-                <span class="label">Monthly Auto-Accrual</span>
-                <span class="val">+30 Pts (e-Bill) / +80 Pts (e-Payment)</span>
-              </div>
-            </div>
-            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
-              <h3 style="font-size: 15px; font-weight: 500; color: #fff; margin-bottom: 12px;">Redeem & Adjust Virtual MEA Points</h3>
-              <div style="display: flex; gap: 12px; align-items: center; max-width: 480px;">
-                <input type="number" id="input-mea-points-delta" placeholder="e.g. -50 to redeem, +100 to add" style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; font-size: 14px; outline: none;" />
-                <button class="action-btn" id="btn-adjust-mea-points" style="padding: 10px 18px; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; transition: background-color 0.2s;">
-                  ✨ Apply Adjustment
-                </button>
-              </div>
-              <div style="font-size: 12px; color: #9e9e9e; margin-top: 8px;">
-                Enter negative numbers (e.g. <code>-50</code>) to redeem points when applied to your electricity bill, or positive numbers (e.g. <code>+100</code>) to add manual points.
-              </div>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
-      <!-- Tab 5: Grid Outages -->
+      <!-- Tab 4: Grid Outages -->
       ${this._activeTab === 'outages' ? `
         <div class="grid">
           <div class="card full-width">

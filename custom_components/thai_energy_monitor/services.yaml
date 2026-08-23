@@ -201,3 +201,7 @@ calculate_bess_lookback:
 calculate_12_month_lookback:
   name: Run 12-Month Tariff Comparison Lookback
   description: Compares 12 months of historical energy consumption under progressive vs. TOU tariffs.
+
+reset_outage_history:
+  name: Reset Grid Outage Statistics
+  description: Clears all historical grid outage records, resets the incident counter to 0, and resets total cumulative downtime.

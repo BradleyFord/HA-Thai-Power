@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.abspath("custom_components/thai_energy_monitor"))
 
 from const import (
     DEFAULT_FT_RATE,
+    DEFAULT_OUTAGE_COST_PER_KWH,
     DEFAULT_SOLAR_SELLBACK,
-    MEA_POINT_CASH_CONVERSION,
     TARIFF_1_1_PSO_SUBSIDY_LIMIT,
     TARIFF_1_1_SERVICE_CHARGE,
     TARIFF_1_1_TIERS,
@@ -128,12 +128,6 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         self.assertEqual(curr_import_2, 0.0)
         self.assertEqual(curr_export_2, 2.1)
 
-    def test_mea_points_cash_conversion(self) -> None:
-        """Test MEA Points gamification balance to THB discount conversion."""
-        points = 1250
-        cash_value = points * MEA_POINT_CASH_CONVERSION
-        self.assertEqual(cash_value, 125.0)
-
     def test_lts_daily_history_sum_invariant(self) -> None:
         """Test that LTS daily history sum for elapsed days matches total monthly consumption exactly."""
         total_monthly_kwh = 580.14
@@ -168,6 +162,15 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
 
         self.assertAlmostEqual(sum(day_values), total_monthly_kwh, places=2)
         self.assertGreaterEqual(today_delta, 0.0)
+
+    def test_grid_outage_economic_cost_calculation(self) -> None:
+        """Test macroeconomic grid outage cost calculation against ERC baseline."""
+        downtime_seconds = 3600.0  # 1 hour
+        hours = downtime_seconds / 3600.0
+        assumed_load_kw = 1.5
+        cost_per_kwh = DEFAULT_OUTAGE_COST_PER_KWH
+        loss = (hours * assumed_load_kw) * cost_per_kwh
+        self.assertAlmostEqual(loss, 462.615, places=3)
 
 
 if __name__ == "__main__":
