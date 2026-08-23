@@ -22,7 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from homeassistant.util import dt as dt_util
 
-from .const import ATTRIBUTION, DOMAIN
+from .const import ATTRIBUTION, DOMAIN, VERSION
 from .coordinator import ThaiEnergyDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -229,6 +229,7 @@ class ThaiEnergyCostSensor(
             "solar_sellback_rate": self.coordinator.config_data.get("solar_sellback_rate") or 2.20,
             "mea_ebill_active": self.entry.data.get("mea_ebill_active") or False,
             "mea_epayment_active": self.entry.data.get("mea_epayment_active") or False,
+            "integration_version": VERSION,
         }
 
     @property
