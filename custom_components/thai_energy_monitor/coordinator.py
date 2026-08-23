@@ -426,39 +426,48 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
 
         # 1. Primary: Query Long-Term Statistics (LTS) for exact meter state
+        def _query_lts() -> float | None:
+            try:
+                stats_dict = statistics_during_period(
+                    self.hass,
+                    start_time=target_dt - timedelta(hours=24),
+                    end_time=target_dt + timedelta(hours=24),
+                    statistic_ids=[entity_id],
+                    period="hour",
+                    units=None,
+                    types={"state", "sum"},
+                )
+                entity_stats = stats_dict.get(entity_id, [])
+                if entity_stats:
+                    bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+
+                    def _get_dt(s: dict[str, Any]) -> datetime:
+                        start_val = s.get("start")
+                        if isinstance(start_val, (int, float)):
+                            if start_val > 1e11:
+                                start_val = start_val / 1000.0
+                            return datetime.fromtimestamp(start_val, tz=bkk_tz)
+                        elif isinstance(start_val, datetime):
+                            return start_val.astimezone(bkk_tz)
+                        return target_dt
+
+                    best_stat = min(entity_stats, key=lambda s: abs((_get_dt(s) - target_dt).total_seconds()))
+                    stat_state = best_stat.get("state")
+                    if stat_state is not None:
+                        return float(stat_state)
+                    stat_sum = best_stat.get("sum")
+                    if stat_sum is not None:
+                        return float(stat_sum)
+            except Exception as err:
+                _LOGGER.debug("Could not query LTS baseline for %s: %s", entity_id, err)
+            return None
+
         try:
-            stats_dict = await statistics_during_period(
-                self.hass,
-                start_time=target_dt - timedelta(hours=24),
-                end_time=target_dt + timedelta(hours=24),
-                statistic_ids=[entity_id],
-                period="hour",
-                units=None,
-                types={"state", "sum"},
-            )
-            entity_stats = stats_dict.get(entity_id, [])
-            if entity_stats:
-                bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-
-                def _get_dt(s: dict[str, Any]) -> datetime:
-                    start_val = s.get("start")
-                    if isinstance(start_val, (int, float)):
-                        if start_val > 1e11:
-                            start_val = start_val / 1000.0
-                        return datetime.fromtimestamp(start_val, tz=bkk_tz)
-                    elif isinstance(start_val, datetime):
-                        return start_val.astimezone(bkk_tz)
-                    return target_dt
-
-                best_stat = min(entity_stats, key=lambda s: abs((_get_dt(s) - target_dt).total_seconds()))
-                stat_state = best_stat.get("state")
-                if stat_state is not None:
-                    return float(stat_state)
-                stat_sum = best_stat.get("sum")
-                if stat_sum is not None:
-                    return float(stat_sum)
-        except Exception as err:
-            _LOGGER.debug("Could not query LTS baseline for %s: %s", entity_id, err)
+            lts_res = await get_instance(self.hass).async_add_executor_job(_query_lts)
+            if lts_res is not None:
+                return lts_res
+        except Exception:
+            pass
 
         # 2. Fallback: Query significant states from short-term recorder if LTS is not yet populated
         def _query_states():
@@ -712,19 +721,26 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         stat_ids = [sid for sid in (self.import_sensor_id, self.solar_sensor_id, self.export_sensor_id) if sid]
 
         # Query permanent Long-Term Statistics (LTS) for daily aggregates across the billing cycle
+        def _fetch_lts_stats() -> dict[str, list[dict[str, Any]]]:
+            try:
+                return statistics_during_period(
+                    self.hass,
+                    start_time=start_dt - timedelta(days=1),
+                    end_time=end_dt + timedelta(hours=1),
+                    statistic_ids=stat_ids,
+                    period="day",
+                    units=None,
+                    types={"change", "state", "sum"},
+                )
+            except Exception as err:
+                _LOGGER.debug("Could not query daily LTS statistics in executor: %s", err)
+                return {}
+
         stats_dict: dict[str, list[dict[str, Any]]] = {}
         try:
-            stats_dict = await statistics_during_period(
-                self.hass,
-                start_time=start_dt - timedelta(days=1),
-                end_time=end_dt + timedelta(hours=1),
-                statistic_ids=stat_ids,
-                period="day",
-                units=None,
-                types={"change", "state", "sum"},
-            )
+            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_lts_stats)
         except Exception as err:
-            _LOGGER.debug("Could not query daily LTS statistics: %s", err)
+            _LOGGER.debug("Executor error fetching LTS daily stats: %s", err)
 
         def extract_daily_series(entity_id: str, curr_sensor_val: float, total_monthly: float) -> list[float]:
             avg_run_rate = total_monthly / elapsed_days_fraction if elapsed_days_fraction > 0 else 0.0
@@ -954,16 +970,17 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Baseline Subtraction for Energy Sensors
             billing_start_dt = self._get_billing_start_datetime(now)
             current_cycle_day = max(1, self.get_billing_cycle_day(now))
-            if self.import_baseline_kwh is None and curr_import > 0.0:
+            if (self.import_baseline_kwh is None or self._last_recorder_fetch_time is None) and curr_import > 0.0:
                 fetched_base = await self._async_get_sensor_baseline(self.import_sensor_id, billing_start_dt)
                 if fetched_base is not None and 0.0 < fetched_base <= curr_import:
                     self.import_baseline_kwh = fetched_base
-                elif self.monthly_import_kwh > 0.0 and curr_import > self.monthly_import_kwh:
-                    self.import_baseline_kwh = curr_import - self.monthly_import_kwh
-                elif current_cycle_day == 1:
-                    self.import_baseline_kwh = curr_import
-                else:
-                    self.import_baseline_kwh = max(0.0, curr_import - self.monthly_import_kwh)
+                elif self.import_baseline_kwh is None:
+                    if self.monthly_import_kwh > 0.0 and curr_import > self.monthly_import_kwh:
+                        self.import_baseline_kwh = curr_import - self.monthly_import_kwh
+                    elif current_cycle_day == 1:
+                        self.import_baseline_kwh = curr_import
+                    else:
+                        self.import_baseline_kwh = max(0.0, curr_import - self.monthly_import_kwh)
 
             if curr_import >= (self.import_baseline_kwh or 0.0) and (self.import_baseline_kwh or 0.0) > 0.0:
                 self.monthly_import_kwh = curr_import - (self.import_baseline_kwh or 0.0)
@@ -989,16 +1006,17 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Baseline Subtraction for Energy Sensors
             billing_start_dt = self._get_billing_start_datetime(now)
             current_cycle_day = max(1, self.get_billing_cycle_day(now))
-            if self.solar_baseline_kwh is None and curr_solar > 0.0:
+            if (self.solar_baseline_kwh is None or self._last_recorder_fetch_time is None) and curr_solar > 0.0:
                 fetched_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, billing_start_dt)
                 if fetched_solar is not None and 0.0 < fetched_solar <= curr_solar:
                     self.solar_baseline_kwh = fetched_solar
-                elif self.monthly_solar_kwh > 0.0 and curr_solar > self.monthly_solar_kwh:
-                    self.solar_baseline_kwh = curr_solar - self.monthly_solar_kwh
-                elif current_cycle_day == 1:
-                    self.solar_baseline_kwh = curr_solar
-                else:
-                    self.solar_baseline_kwh = max(0.0, curr_solar - self.monthly_solar_kwh)
+                elif self.solar_baseline_kwh is None:
+                    if self.monthly_solar_kwh > 0.0 and curr_solar > self.monthly_solar_kwh:
+                        self.solar_baseline_kwh = curr_solar - self.monthly_solar_kwh
+                    elif current_cycle_day == 1:
+                        self.solar_baseline_kwh = curr_solar
+                    else:
+                        self.solar_baseline_kwh = max(0.0, curr_solar - self.monthly_solar_kwh)
 
             if curr_solar >= (self.solar_baseline_kwh or 0.0) and (self.solar_baseline_kwh or 0.0) > 0.0:
                 self.monthly_solar_kwh = curr_solar - (self.solar_baseline_kwh or 0.0)
@@ -1024,16 +1042,17 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Baseline Subtraction for Energy Sensors
             billing_start_dt = self._get_billing_start_datetime(now)
             current_cycle_day = max(1, self.get_billing_cycle_day(now))
-            if self.export_baseline_kwh is None and curr_export > 0.0:
+            if (self.export_baseline_kwh is None or self._last_recorder_fetch_time is None) and curr_export > 0.0:
                 fetched_export = await self._async_get_sensor_baseline(self.export_sensor_id, billing_start_dt)
                 if fetched_export is not None and 0.0 < fetched_export <= curr_export:
                     self.export_baseline_kwh = fetched_export
-                elif self.monthly_export_kwh > 0.0 and curr_export > self.monthly_export_kwh:
-                    self.export_baseline_kwh = curr_export - self.monthly_export_kwh
-                elif current_cycle_day == 1:
-                    self.export_baseline_kwh = curr_export
-                else:
-                    self.export_baseline_kwh = max(0.0, curr_export - self.monthly_export_kwh)
+                elif self.export_baseline_kwh is None:
+                    if self.monthly_export_kwh > 0.0 and curr_export > self.monthly_export_kwh:
+                        self.export_baseline_kwh = curr_export - self.monthly_export_kwh
+                    elif current_cycle_day == 1:
+                        self.export_baseline_kwh = curr_export
+                    else:
+                        self.export_baseline_kwh = max(0.0, curr_export - self.monthly_export_kwh)
 
             if curr_export >= (self.export_baseline_kwh or 0.0) and (self.export_baseline_kwh or 0.0) > 0.0:
                 self.monthly_export_kwh = curr_export - (self.export_baseline_kwh or 0.0)
@@ -1410,20 +1429,27 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         
         # Query hourly stats for grid import sensor over the past 365 days
+        def _fetch_lookback_stats() -> dict[str, list[dict[str, Any]]]:
+            try:
+                return statistics_during_period(
+                    self.hass,
+                    start_time=now - timedelta(days=365),
+                    end_time=now,
+                    statistic_ids=[self.import_sensor_id],
+                    period="hour",
+                    units=None,
+                    types={"sum", "state"},
+                )
+            except Exception as err:
+                _LOGGER.debug("Could not query 12-month hourly statistics: %s", err)
+                return {}
+
         import_stats = []
         try:
-            stats_dict = await statistics_during_period(
-                self.hass,
-                start_time=now - timedelta(days=365),
-                end_time=now,
-                statistic_ids=[self.import_sensor_id],
-                period="hour",
-                units=None,
-                types={"sum", "state"}
-            )
+            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_lookback_stats)
             import_stats = stats_dict.get(self.import_sensor_id, [])
         except Exception as err:
-            _LOGGER.debug("Could not query 12-month hourly statistics: %s", err)
+            _LOGGER.debug("Executor error for 12-month stats: %s", err)
 
         # Sort stats chronologically
         import_stats = sorted(import_stats, key=lambda x: x["start"])
@@ -1529,39 +1555,33 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = dt_util.now()
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         
-        # Query hourly stats for grid export sensor over the past 365 days
-        export_stats = []
-        if self.export_sensor_id:
+        # Query hourly stats for grid export and import sensors over the past 365 days
+        def _fetch_bess_stats() -> dict[str, list[dict[str, Any]]]:
+            bess_stat_ids = [sid for sid in (self.export_sensor_id, self.import_sensor_id) if sid]
             try:
-                stats_dict = await statistics_during_period(
+                return statistics_during_period(
                     self.hass,
                     start_time=now - timedelta(days=365),
                     end_time=now,
-                    statistic_ids=[self.export_sensor_id],
+                    statistic_ids=bess_stat_ids,
                     period="hour",
                     units=None,
-                    types={"sum", "state"}
+                    types={"sum", "state"},
                 )
-                export_stats = stats_dict.get(self.export_sensor_id, [])
             except Exception as err:
-                _LOGGER.debug("Could not query 12-month export statistics for BESS: %s", err)
+                _LOGGER.debug("Could not query 12-month BESS statistics: %s", err)
+                return {}
 
-        # Query hourly stats for grid import sensor over the past 365 days
+        export_stats = []
         import_stats = []
-        if self.import_sensor_id:
-            try:
-                stats_dict = await statistics_during_period(
-                    self.hass,
-                    start_time=now - timedelta(days=365),
-                    end_time=now,
-                    statistic_ids=[self.import_sensor_id],
-                    period="hour",
-                    units=None,
-                    types={"sum", "state"}
-                )
+        try:
+            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_bess_stats)
+            if self.export_sensor_id:
+                export_stats = stats_dict.get(self.export_sensor_id, [])
+            if self.import_sensor_id:
                 import_stats = stats_dict.get(self.import_sensor_id, [])
-            except Exception as err:
-                _LOGGER.debug("Could not query 12-month import statistics for BESS: %s", err)
+        except Exception as err:
+            _LOGGER.debug("Executor error for BESS stats: %s", err)
 
         # Sort stats chronologically
         export_stats = sorted(export_stats, key=lambda x: x["start"])
