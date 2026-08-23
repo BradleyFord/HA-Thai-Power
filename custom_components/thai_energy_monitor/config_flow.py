@@ -138,6 +138,26 @@ class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             grid_export = user_input.get(CONF_GRID_EXPORT_SENSOR) or user_input[CONF_GRID_IMPORT_SENSOR]
             user_input[CONF_GRID_EXPORT_SENSOR] = grid_export
 
+            old_ft = current_entry.data.get(CONF_FT_RATE)
+            new_ft = float(user_input.get(CONF_FT_RATE, old_ft)) if user_input.get(CONF_FT_RATE) is not None else old_ft
+            old_tariff = current_entry.data.get(CONF_TARIFF_CATEGORY)
+            new_tariff = user_input.get(CONF_TARIFF_CATEGORY, old_tariff)
+            provider = user_input.get(CONF_UTILITY_PROVIDER, current_entry.data.get(CONF_UTILITY_PROVIDER, "MEA"))
+
+            if (old_ft is not None and abs(old_ft - new_ft) > 0.0001) or (old_tariff != new_tariff):
+                try:
+                    from . import notify_tariff_change
+                    notify_tariff_change(
+                        self.hass,
+                        provider=provider,
+                        old_ft=old_ft,
+                        new_ft=new_ft,
+                        old_tariff=old_tariff,
+                        new_tariff=new_tariff,
+                    )
+                except Exception as err:
+                    _LOGGER.debug("Could not dispatch tariff change notification: %s", err)
+
             # Update base entry data dictionary directly
             new_data = {**current_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(

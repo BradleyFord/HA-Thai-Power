@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import voluptuous as vol
 
-from homeassistant.components import frontend
+from homeassistant.components import frontend, persistent_notification
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -37,6 +37,56 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 SERVICE_TRIGGER_12_MONTH_LOOKBACK = "trigger_12_month_lookback"
 SERVICE_TRIGGER_BESS_LOOKBACK = "trigger_bess_lookback"
+
+
+def notify_tariff_change(
+    hass: HomeAssistant,
+    provider: str,
+    old_ft: float | None,
+    new_ft: float,
+    old_tariff: str | None = None,
+    new_tariff: str | None = None,
+) -> None:
+    """Post a Home Assistant persistent notification and fire an event when tariff / Ft changes."""
+    msg_lines = [
+        f"### ⚡ Thailand Electricity Tariff Updated ({provider})",
+        "",
+    ]
+    if old_tariff and new_tariff and old_tariff != new_tariff:
+        msg_lines.append(f"* **Tariff Structure:** Changed from `{old_tariff}` to `{new_tariff}`")
+
+    if old_ft is not None and abs(old_ft - new_ft) > 0.0001:
+        diff = new_ft - old_ft
+        msg_lines.extend([
+            f"* **Previous Ft Surcharge:** ฿{old_ft:.4f} / kWh",
+            f"* **New Ft Surcharge:** ฿{new_ft:.4f} / kWh",
+            f"* **Adjustment Delta:** `{diff:+.4f} THB/kWh`",
+        ])
+    elif old_ft is None:
+        msg_lines.append(f"* **Active Ft Surcharge:** ฿{new_ft:.4f} / kWh")
+
+    msg_lines.extend([
+        "",
+        "The updated parameters have been applied to your current billing cycle calculations.",
+    ])
+
+    persistent_notification.async_create(
+        hass,
+        message="\n".join(msg_lines),
+        title="⚡ Thailand Electricity Tariff Updated",
+        notification_id="thai_energy_monitor_tariff_update",
+    )
+
+    hass.bus.async_fire(
+        "thai_energy_monitor_tariff_updated",
+        {
+            "provider": provider,
+            "old_ft": old_ft,
+            "new_ft": new_ft,
+            "old_tariff": old_tariff,
+            "new_tariff": new_tariff,
+        },
+    )
 
 
 def fetch_latest_ft_rate_sync() -> float | None:
@@ -134,6 +184,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "Updating FT rate from %s to %s THB/kWh based on MEA Open Data API",
                     current_ft,
                     latest_ft,
+                )
+                notify_tariff_change(
+                    hass,
+                    provider=entry.data.get(CONF_UTILITY_PROVIDER, "MEA"),
+                    old_ft=current_ft,
+                    new_ft=latest_ft,
                 )
                 new_data = {**entry.data, CONF_FT_RATE: latest_ft}
                 hass.config_entries.async_update_entry(entry, data=new_data)
@@ -287,6 +343,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if "bess_tariff_model" in entry.data:
             new_data["bess_tariff_model"] = entry.data["bess_tariff_model"]
 
+        old_ft = entry.data.get(CONF_FT_RATE)
+        new_ft = float(call.data[CONF_FT_RATE])
+        old_tariff = entry.data.get(CONF_TARIFF_CATEGORY)
+        new_tariff = call.data[CONF_TARIFF_CATEGORY]
+        provider = call.data[CONF_UTILITY_PROVIDER]
+
+        if (old_ft is not None and abs(old_ft - new_ft) > 0.0001) or (old_tariff != new_tariff):
+            notify_tariff_change(
+                hass,
+                provider=provider,
+                old_ft=old_ft,
+                new_ft=new_ft,
+                old_tariff=old_tariff,
+                new_tariff=new_tariff,
+            )
+
         hass.config_entries.async_update_entry(entry, data=new_data)
         coordinator.config_data.update(new_data)
         
@@ -339,7 +411,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=2.2.9",
+                    "js_url": "/thai_energy_ui/panel.js?v=2.3.0",
                 }
             },
             require_admin=False,

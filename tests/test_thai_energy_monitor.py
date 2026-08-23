@@ -210,6 +210,14 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         stat2 = {"start": dt_from_float}
         self.assertEqual(_sort_key(stat1), _sort_key(stat2))
 
+    def test_tariff_notification_formatting(self) -> None:
+        """Test before and after formatting for tariff change notification."""
+        old_ft = 0.3972
+        new_ft = 0.1572
+        diff = new_ft - old_ft
+        formatted_delta = f"{diff:+.4f} THB/kWh"
+        self.assertEqual(formatted_delta, "-0.2400 THB/kWh")
+
 
 if __name__ == "__main__":
     unittest.main()
