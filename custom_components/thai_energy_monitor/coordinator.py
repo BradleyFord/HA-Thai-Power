@@ -421,13 +421,48 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return datetime(prev_year, prev_month, target_day, 0, 0, 0, tzinfo=bkk_tz)
 
     async def _async_get_sensor_baseline(self, entity_id: str, target_dt: datetime) -> float | None:
-        """Fetch historical state of a sensor at a specific datetime from HA recorder."""
+        """Fetch historical cumulative meter reading at target_dt from HA Long-Term Statistics or recorder."""
         if not entity_id:
             return None
 
-        def _query():
+        # 1. Primary: Query Long-Term Statistics (LTS) for exact meter state
+        try:
+            stats_dict = await statistics_during_period(
+                self.hass,
+                start_time=target_dt - timedelta(hours=24),
+                end_time=target_dt + timedelta(hours=24),
+                statistic_ids=[entity_id],
+                period="hour",
+                units=None,
+                types={"state", "sum"},
+            )
+            entity_stats = stats_dict.get(entity_id, [])
+            if entity_stats:
+                bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+
+                def _get_dt(s: dict[str, Any]) -> datetime:
+                    start_val = s.get("start")
+                    if isinstance(start_val, (int, float)):
+                        if start_val > 1e11:
+                            start_val = start_val / 1000.0
+                        return datetime.fromtimestamp(start_val, tz=bkk_tz)
+                    elif isinstance(start_val, datetime):
+                        return start_val.astimezone(bkk_tz)
+                    return target_dt
+
+                best_stat = min(entity_stats, key=lambda s: abs((_get_dt(s) - target_dt).total_seconds()))
+                stat_state = best_stat.get("state")
+                if stat_state is not None:
+                    return float(stat_state)
+                stat_sum = best_stat.get("sum")
+                if stat_sum is not None:
+                    return float(stat_sum)
+        except Exception as err:
+            _LOGGER.debug("Could not query LTS baseline for %s: %s", entity_id, err)
+
+        # 2. Fallback: Query significant states from short-term recorder if LTS is not yet populated
+        def _query_states():
             try:
-                # 1. Primary search: +/- 48h around target_dt
                 states = get_significant_states(
                     self.hass,
                     start_time=target_dt - timedelta(hours=48),
@@ -443,28 +478,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     st_val = best_state.state
                     if st_val not in ("unavailable", "unknown"):
                         return float(st_val)
-
-                # 2. Fallback: If recorder pruned data back to target_dt, find earliest valid state
-                states_all = get_significant_states(
-                    self.hass,
-                    start_time=target_dt,
-                    end_time=dt_util.now(),
-                    entity_ids=[entity_id],
-                    significant_changes_only=False,
-                )
-                if entity_id in states_all and states_all[entity_id]:
-                    for s in states_all[entity_id]:
-                        if s.state not in ("unavailable", "unknown"):
-                            try:
-                                return float(s.state)
-                            except (ValueError, TypeError):
-                                pass
             except Exception as err:
                 _LOGGER.debug("Could not fetch historical baseline state for %s: %s", entity_id, err)
             return None
 
         try:
-            return await get_instance(self.hass).async_add_executor_job(_query)
+            return await get_instance(self.hass).async_add_executor_job(_query_states)
         except Exception:
             return None
 
@@ -692,78 +711,68 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         stat_ids = [sid for sid in (self.import_sensor_id, self.solar_sensor_id, self.export_sensor_id) if sid]
 
-        def _fetch_history_states():
-            try:
-                return get_significant_states(
-                    self.hass,
-                    start_time=start_dt - timedelta(hours=24),
-                    end_time=end_dt,
-                    entity_ids=stat_ids,
-                    significant_changes_only=False,
-                )
-            except Exception as err:
-                _LOGGER.debug("Could not query significant states for daily history: %s", err)
-                return {}
-
-        recorded_states = {}
+        # Query permanent Long-Term Statistics (LTS) for daily aggregates across the billing cycle
+        stats_dict: dict[str, list[dict[str, Any]]] = {}
         try:
-            recorded_states = await get_instance(self.hass).async_add_executor_job(_fetch_history_states)
+            stats_dict = await statistics_during_period(
+                self.hass,
+                start_time=start_dt - timedelta(days=1),
+                end_time=end_dt + timedelta(hours=1),
+                statistic_ids=stat_ids,
+                period="day",
+                units=None,
+                types={"change", "state", "sum"},
+            )
         except Exception as err:
-            _LOGGER.debug("Executor error fetching recorder states: %s", err)
+            _LOGGER.debug("Could not query daily LTS statistics: %s", err)
 
         def extract_daily_series(entity_id: str, curr_sensor_val: float, total_monthly: float) -> list[float]:
-            entity_states = recorded_states.get(entity_id, []) if recorded_states else []
             avg_run_rate = total_monthly / elapsed_days_fraction if elapsed_days_fraction > 0 else 0.0
+            entity_stats = stats_dict.get(entity_id, []) if stats_dict else []
 
-            valid_states = []
-            for s in entity_states:
-                if s.state not in ("unavailable", "unknown"):
-                    try:
-                        valid_states.append((s.last_updated.astimezone(bkk_tz), float(s.state)))
-                    except (ValueError, TypeError):
-                        continue
-
-            if not valid_states:
-                # If no raw states available, use authentic average run-rate for past days
-                return [round(avg_run_rate, 3) for _ in range(30)]
-
-            valid_states.sort(key=lambda s: s[0])
-            vals = [v for _, v in valid_states]
-
-            # Detect if sensor is monotonic cumulative (lifetime meter) vs daily-resetting
-            drops = sum(1 for i in range(len(vals) - 1) if vals[i] - vals[i + 1] > 2.0)
-            is_cumulative = drops == 0 and (max(vals) > 50.0 or (len(vals) > 1 and vals[-1] >= vals[0]))
-
-            def get_reading_at(target_dt: datetime) -> float:
-                candidates = [s for s in valid_states if s[0] <= target_dt]
-                if candidates:
-                    return candidates[-1][1]
-                return min(valid_states, key=lambda s: abs((s[0] - target_dt).total_seconds()))[1]
-
-            daily_values = []
-            for idx in range(current_day - 1):
-                day_start = start_dt + timedelta(days=idx)
-                day_end = start_dt + timedelta(days=idx + 1)
-
-                if is_cumulative:
-                    r_start = get_reading_at(day_start)
-                    r_end = get_reading_at(day_end)
-                    delta = max(0.0, r_end - r_start)
+            # Index LTS daily statistics by local Bangkok date key (YYYY-MM-DD)
+            stats_by_date: dict[str, float] = {}
+            for stat in entity_stats:
+                start_val = stat.get("start")
+                if isinstance(start_val, (int, float)):
+                    if start_val > 1e11:
+                        start_val = start_val / 1000.0
+                    stat_dt = datetime.fromtimestamp(start_val, tz=bkk_tz)
+                elif isinstance(start_val, datetime):
+                    stat_dt = start_val.astimezone(bkk_tz)
                 else:
-                    day_vals = [v for dt, v in valid_states if day_start <= dt < day_end]
-                    delta = max(day_vals) if day_vals else 0.0
+                    continue
 
-                if delta <= 0.001 and total_monthly > 0:
-                    delta = avg_run_rate
+                date_key = stat_dt.strftime("%Y-%m-%d")
+                change_val = stat.get("change")
+                if change_val is not None and change_val >= 0.0:
+                    stats_by_date[date_key] = float(change_val)
 
-                daily_values.append(round(delta, 3))
+            # Extract daily values for completed past days (0 to current_day - 2)
+            daily_values: list[float] = []
+            missing_indices: list[int] = []
 
-            # For today (Day current_day): exact live accumulation so far today
+            for idx in range(current_day - 1):
+                day_date = (start_dt + timedelta(days=idx)).date()
+                date_key = day_date.strftime("%Y-%m-%d")
+                if date_key in stats_by_date:
+                    daily_values.append(round(stats_by_date[date_key], 3))
+                else:
+                    daily_values.append(-1.0)
+                    missing_indices.append(idx)
+
+            # If any past day was missing from LTS, allocate remaining proportionally without exceeding monthly total
+            known_past_sum = sum(v for v in daily_values if v >= 0.0)
+            remaining_for_missing = max(0.0, total_monthly - known_past_sum)
+            num_slots = len(missing_indices) + 1  # missing past days + today
+            fallback_val = remaining_for_missing / num_slots if num_slots > 0 else 0.0
+
+            for idx in missing_indices:
+                daily_values[idx] = round(fallback_val, 3)
+
+            # For today (Day current_day): live accumulation up to right now
             past_sum = sum(daily_values)
             today_delta = max(0.0, total_monthly - past_sum)
-            if today_delta == 0.0 and total_monthly > 0:
-                today_delta = avg_run_rate
-
             daily_values.append(round(today_delta, 3))
 
             # For future days in billing cycle: project average daily run-rate

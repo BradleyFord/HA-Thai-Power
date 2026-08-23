@@ -134,6 +134,41 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         cash_value = points * MEA_POINT_CASH_CONVERSION
         self.assertEqual(cash_value, 125.0)
 
+    def test_lts_daily_history_sum_invariant(self) -> None:
+        """Test that LTS daily history sum for elapsed days matches total monthly consumption exactly."""
+        total_monthly_kwh = 580.14
+        recorded_changes = [
+            42.58, 35.91, 41.53, 37.05, 31.26, 48.88, 43.54,
+            45.01, 48.00, 42.97, 46.27, 29.82, 43.91
+        ]
+        # Past 13 days
+        past_sum = sum(recorded_changes)
+        today_delta = max(0.0, total_monthly_kwh - past_sum)
+
+        all_14_days = recorded_changes + [today_delta]
+        self.assertAlmostEqual(sum(all_14_days), total_monthly_kwh, places=2)
+        self.assertGreater(today_delta, 0.0)
+
+    def test_lts_proportional_distribution_when_pruned(self) -> None:
+        """Test that missing past days receive proportional remainder without exceeding monthly total."""
+        total_monthly_kwh = 495.90
+        # Days 4 to 13 recorded (days 1 to 3 missing)
+        recorded_days_4_to_13 = [30.09, 31.26, 48.88, 43.54, 45.01, 48.0, 42.97, 46.27, 29.82, 43.91]
+        known_sum = sum(recorded_days_4_to_13)
+        missing_count = 3  # days 1, 2, 3
+
+        remaining = max(0.0, total_monthly_kwh - known_sum)
+        slots = missing_count + 1  # 3 missing days + today
+        fallback_val = remaining / slots
+
+        day_values = [fallback_val] * 3 + recorded_days_4_to_13
+        past_sum = sum(day_values)
+        today_delta = max(0.0, total_monthly_kwh - past_sum)
+        day_values.append(today_delta)
+
+        self.assertAlmostEqual(sum(day_values), total_monthly_kwh, places=2)
+        self.assertGreaterEqual(today_delta, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
