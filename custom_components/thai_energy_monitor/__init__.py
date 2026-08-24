@@ -274,10 +274,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Update coordinator parameters immediately
         coordinator.config_data["bess_capacity_kwh"] = capacity
+        coordinator.config_data["bess_capex_cost"] = capex
         coordinator.config_data["bess_grid_charging"] = grid_charging
         coordinator.config_data["bess_tariff_model"] = tariff_model
         coordinator.bess_capex_cost = capex
         
+        # Always recalculate 12-month BESS lookback if previously generated, otherwise refresh coordinator
+        if coordinator.bess_12_months_data is not None:
+            await coordinator.async_calculate_bess_lookback()
         await coordinator.async_request_refresh()
 
     if not hass.services.has_service(DOMAIN, SERVICE_CONFIGURE_BESS):

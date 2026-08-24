@@ -1623,9 +1623,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Predictive & Simulation Analytics
             "opposing_tariff_name": opposing_tariff_name,
             "phantom_total_bill": round(phantom_total_bill, 2),
-            "potential_tariff_diff_thb": round(potential_tariff_diff_thb, 2),
             "bess_simulated_savings_thb": round(self.bess_simulated_savings_thb, 2),
-            "bess_capex_cost": self.bess_capex_cost,
+            "bess_capacity_kwh": bess_capacity,
+            "bess_capex_cost": float(self.config_data.get("bess_capex_cost") or getattr(self, "bess_capex_cost", 50000.0)),
+            "bess_grid_charging": grid_charging,
+            "bess_tariff_model": tariff_model,
             
             # Grid Outages & Resilience Tracking
             "is_grid_outage": self.is_grid_outage,
@@ -1884,9 +1886,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             all_day_keys = sorted(all_day_keys)
 
         # BESS configuration parameters
-        bess_capacity = float(self.config_data.get("bess_capacity_kwh") or 5.0)
-        if "bess_capacity_kwh" in self.data:
-            bess_capacity = float(self.data["bess_capacity_kwh"])
+        bess_capacity = float(self.config_data.get("bess_capacity_kwh") or self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
         bess_efficiency = 0.90
         grid_charging = bool(self.config_data.get("bess_grid_charging", False))
         tariff_model = self.config_data.get("bess_tariff_model", "tou")

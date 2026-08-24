@@ -190,7 +190,19 @@
       opposing_comparison_model: "Opposing Comparison Model",
       optimized_tariff_recommendation: "Optimized Tariff Recommendation",
       stay_on_tariff: "Stay on Tariff",
-      switch_to_tariff: "Switch to"
+      switch_to_tariff: "Switch to",
+
+      analysis_summary_title: "12-Month Analysis & Final Recommendation",
+      annual_tou_savings: "Annual Net TOU Savings",
+      annual_tiered_savings: "Annual Net Tiered Savings",
+      annual_tou_higher: "Higher Annual Cost on TOU",
+      rec_stay_tou: "Recommended: Transition / Stay on TOU 1.3.2",
+      rec_stay_tiered: "Recommended: Stay on Normal Tiered 1.2",
+      stat_12m_tiered_total: "12-Month Total (Tiered 1.2)",
+      stat_12m_tou_total: "12-Month Total (TOU 1.3.2)",
+      stat_net_12m_diff: "Net 12-Month Difference",
+      stat_avg_monthly_diff: "Average Monthly Difference",
+      stat_tariff_dominance: "Tariff Dominance Ratio"
     },
 
     th: {
@@ -368,7 +380,19 @@
       opposing_comparison_model: "อัตราเปรียบเทียบ",
       optimized_tariff_recommendation: "คำแนะนำอัตราค่าไฟที่คุ้มค่าที่สุด",
       stay_on_tariff: "ใช้อัตราเดิมต่อไป",
-      switch_to_tariff: "ควรเปลี่ยนเป็น"
+      switch_to_tariff: "ควรเปลี่ยนเป็น",
+
+      analysis_summary_title: "ผลการวิเคราะห์ย้อนหลัง 12 เดือนและคำแนะนำอัตราค่าไฟ",
+      annual_tou_savings: "ประหยัดค่าไฟสุทธิต่อปีเมื่อใช้ TOU 1.3.2",
+      annual_tiered_savings: "ประหยัดค่าไฟสุทธิต่อปีเมื่อใช้อัตราปกติ 1.2",
+      annual_tou_higher: "ค่าไฟต่อปีจะสูงขึ้นหากใช้ TOU (อัตรา 1.2 คุ้มกว่า)",
+      rec_stay_tou: "คำแนะนำ: เหมาะสมกับอัตรา TOU 1.3.2",
+      rec_stay_tiered: "คำแนะนำ: เหมาะสมกับอัตราปกติ 1.2 (ขั้นบันได)",
+      stat_12m_tiered_total: "ยอดรวมค่าไฟ 12 เดือน (อัตราปกติ 1.2)",
+      stat_12m_tou_total: "ยอดรวมค่าไฟ 12 เดือน (อัตรา TOU 1.3.2)",
+      stat_net_12m_diff: "ส่วนต่างสุทธิรวม 12 เดือน",
+      stat_avg_monthly_diff: "ส่วนต่างเฉลี่ยต่อเดือน",
+      stat_tariff_dominance: "สัดส่วนเดือนที่คุ้มค่ากว่า"
     }
   };
 
@@ -1354,6 +1378,10 @@
             btnSaveBess.innerHTML = '✅ Saved & Recalculated!';
             btnSaveBess.style.backgroundColor = 'var(--success-color, #4caf50)';
             setTimeout(() => {
+              this._extractData();
+              this._initialRender();
+            }, 300);
+            setTimeout(() => {
               btnSaveBess.innerHTML = origHtml;
               btnSaveBess.style.backgroundColor = 'var(--primary-color, #03a9f4)';
               btnSaveBess.disabled = false;
@@ -1508,6 +1536,32 @@
     const diffText = diffVal >= 0
       ? `฿${Math.abs(diffVal).toFixed(2)} Monthly Savings`
       : `฿${Math.abs(diffVal).toFixed(2)} Higher than ${d.opposingTariffName}`;
+
+    // 12-Month Lookback Analysis Aggregations
+    let totalTiered12m = 0;
+    let totalTou12m = 0;
+    let totalNetSavings12m = 0;
+    let avgMonthlySavings12m = 0;
+    let touWinningMonths = 0;
+    let tieredWinningMonths = 0;
+
+    if (d.lookbackData && Array.isArray(d.lookbackData) && d.lookbackData.length > 0) {
+      totalTiered12m = d.lookbackData.reduce((sum, r) => sum + (parseFloat(r.tiered_cost) || 0), 0);
+      totalTou12m = d.lookbackData.reduce((sum, r) => sum + (parseFloat(r.tou_cost) || 0), 0);
+      totalNetSavings12m = totalTiered12m - totalTou12m;
+      avgMonthlySavings12m = totalNetSavings12m / d.lookbackData.length;
+      touWinningMonths = d.lookbackData.filter(r => (parseFloat(r.savings) || 0) >= 0).length;
+      tieredWinningMonths = d.lookbackData.length - touWinningMonths;
+    }
+
+    const isTouRecommended = totalNetSavings12m >= 0;
+    const lookbackRecClass = isTouRecommended ? 'saving' : 'warning';
+    const lookbackRecTitle = isTouRecommended
+      ? `+฿${this._formatNum(totalNetSavings12m)} ${this.t('annual_tou_savings')}`
+      : `฿${this._formatNum(Math.abs(totalNetSavings12m))} ${this.t('annual_tou_higher')}`;
+    const lookbackRecText = isTouRecommended
+      ? this.t('rec_stay_tou')
+      : this.t('rec_stay_tiered');
 
     // Max day total for Billing chart scaling
     const maxDayTotal = Math.max(10, ...d.monthlyDailyBars.map(b => b.total));
@@ -2745,27 +2799,41 @@
             `}
           </div>
 
-          <!-- Current Cycle Real-Time Tariff Arbitrage Comparison Card -->
-          <div class="card">
-            <h2>${this.t('current_cycle_tariff_comparison')}</h2>
-            <div class="metric-main ${diffClass}">${diffText}</div>
-            <div class="table-rows">
-              <div class="row">
-                <span class="label">${this.t('current_registered_tariff')}</span>
-                <span class="val">Tariff ${d.tariffCategory}</span>
-              </div>
-              <div class="row">
-                <span class="label">${this.t('opposing_comparison_model')}</span>
-                <span class="val">${d.opposingTariffName}</span>
-              </div>
-              <div class="row">
-                <span class="label">${this.t('optimized_tariff_recommendation')}</span>
-                <span class="val ${diffClass}">${diffVal >= 0 ? `${this.t('stay_on_tariff')} ${d.tariffCategory}` : `${this.t('switch_to_tariff')} ${d.opposingTariffName}`}</span>
+          ${d.lookbackData ? `
+            <!-- 12-Month Analysis & Final Recommendation Card (Shown only after user runs analysis) -->
+            <div class="card">
+              <h2>${this.t('analysis_summary_title')}</h2>
+              <div class="metric-main ${lookbackRecClass}">${lookbackRecTitle}</div>
+              <div class="table-rows">
+                <div class="row">
+                  <span class="label">${this.t('optimized_tariff_recommendation')}</span>
+                  <span class="val ${lookbackRecClass}">${lookbackRecText}</span>
+                </div>
+                <div class="row">
+                  <span class="label">${this.t('stat_12m_tiered_total')}</span>
+                  <span class="val">฿${this._formatNum(totalTiered12m)}</span>
+                </div>
+                <div class="row">
+                  <span class="label">${this.t('stat_12m_tou_total')}</span>
+                  <span class="val">฿${this._formatNum(totalTou12m)}</span>
+                </div>
+                <div class="row">
+                  <span class="label">${this.t('stat_net_12m_diff')}</span>
+                  <span class="val ${lookbackRecClass}">${totalNetSavings12m >= 0 ? `+฿${this._formatNum(totalNetSavings12m)}` : `-฿${this._formatNum(Math.abs(totalNetSavings12m))}`}</span>
+                </div>
+                <div class="row">
+                  <span class="label">${this.t('stat_avg_monthly_diff')}</span>
+                  <span class="val">฿${this._formatNum(Math.abs(avgMonthlySavings12m))} / ${this.t('col_month').toLowerCase()}</span>
+                </div>
+                <div class="row">
+                  <span class="label">${this.t('stat_tariff_dominance')}</span>
+                  <span class="val">${touWinningMonths} TOU / ${tieredWinningMonths} Tiered (12 Months)</span>
+                </div>
               </div>
             </div>
-          </div>
+          ` : ''}
 
-          <div class="card">
+          <div class="card ${d.lookbackData ? '' : 'full-width'}">
             <h2>${this.t('tariff_regulations_title')}</h2>
             <div class="table-rows">
               <div class="row">
@@ -2943,7 +3011,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.8 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.9 &bull; Home Assistant Custom Integration
       </div>
     `;
 
