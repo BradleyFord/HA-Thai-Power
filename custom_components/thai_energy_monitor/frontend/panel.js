@@ -14,6 +14,308 @@
     return;
   }
 
+  const TRANSLATIONS = {
+    en: {
+      tab_overview: "Billing Overview",
+      tab_solar: "Solar ROI",
+      tab_bess: "BESS Simulation",
+      tab_optimizer: "Tariff Optimizer",
+      tab_outages: "Grid Outages",
+      tab_settings: "⚙️ Settings",
+
+      current_accrued_bill: "Current Accrued Bill (To Date)",
+      projected_month_end: "Projected Month-End:",
+      run_rate: "run-rate",
+      projected_solar_offset: "Projected Solar Offset:",
+      reduction_vs: "reduction vs",
+      bill_without_solar: "bill without solar",
+      accrued_base_energy_charge: "Accrued Base Energy Charge",
+      accrued_ft_charge: "Accrued Ft Charge",
+      fixed_service_charge: "Fixed Service Charge",
+      accrued_statutory_vat: "Accrued Statutory VAT (7%)",
+      detailed_consumption: "Detailed Consumption & Rates",
+      projected_month_end_volume: "Projected Month-End Volume:",
+      tou_window_status: "TOU Window Status",
+      active_marginal_rate: "Active Marginal Retail Rate",
+      energy_dashboard_price: "HA Energy Dashboard Price Entity",
+      last_month_bill: "Last Month Total Bill",
+      lifetime_import: "Lifetime Grid Import Volume",
+      offpeak_window: "Off-Peak Window",
+      peak_window: "Peak Window",
+
+      chart_progression_title: "Cumulative Monthly Running Bill Progression",
+      tou_base_split: "TOU Base Split",
+      tiered_base_charge: "Tiered Base Charge",
+      legend_fixed_service: "1. Fixed Service",
+      legend_peak_charge: "2. Peak Base Charge",
+      legend_offpeak_charge: "3. Off-Peak Base Charge",
+      legend_tier1: "2. Base Tier 1 (0-150)",
+      legend_tier2: "3. Base Tier 2 (151-400)",
+      legend_tier3: "4. Base Tier 3 (>400)",
+      legend_ft: "Ft Charge",
+      legend_vat: "VAT (7%)",
+      note_tou_progression: "Accurate progressive Time of Use billing cycle progression. Base Charge is split daily: Peak Charge (09:00 - 22:00, Mon-Fri) • Off-Peak Charge (all other hours, weekends, and holidays).",
+      note_tiered_progression: "Accurate progressive tiered billing cycle progression. Base Charge is split daily: Tier 1 (first 150 kWh) • Tier 2 (next 250 kWh) • Tier 3 (excess over 400 kWh).",
+
+      chart_daily_title: "Daily Grid Import vs Solar Production",
+      show_volume_kwh: "Show Volume (kWh)",
+      show_value_thb: "Show Value (THB)",
+      legend_grid_import_kwh: "1. Grid Import (Consumption Volume)",
+      legend_grid_import_thb: "1. Grid Import (Incremental Cost)",
+      legend_solar_prod_kwh: "2. Solar Production (Yield Volume)",
+      legend_solar_prod_thb: "2. Solar Production (Financial Benefit)",
+      hover_deltas_hint: "(Hover over bars to view exact daily deltas)",
+
+      solar_savings_title: "Solar Self-Consumption Savings",
+      projected_month_end_savings: "Projected Month-End Savings:",
+      total_solar_production_vol: "Total Solar Production Volume",
+      projected_full_month_yield: "Projected Full Month Yield",
+      self_consumed_vol: "Self-Consumed Volume",
+      lifetime_self_consumption_savings: "Lifetime Self-Consumption Savings",
+      solar_revenue_title: "Solar Export Buy-Back Revenue",
+      projected_month_end_revenue: "Projected Month-End Revenue:",
+      export_buyback_rate: "Export Buy-Back Tariff Rate",
+      grid_export_vol: "Grid Export Volume",
+      lifetime_grid_export_revenue: "Lifetime Grid Export Revenue",
+      solcast_title: "Solcast PV Forecast Integration",
+      solcast_status: "Solcast Integration Status",
+      solcast_integrated: "Solcast Integrated",
+      solcast_simulated: "Simulated Solcast Baseline",
+      estimated_gen_today: "Estimated Generation Today",
+      estimated_rem_today: "Estimated Remaining Today",
+      current_estimated_power: "Current Estimated Power Output",
+      solar_performance_trends: "Billing Month Solar Performance Trends",
+      legend_solcast_forecast: "1. Solcast PV Forecast",
+      legend_actual_solar_prod: "2. Actual Solar Production",
+      legend_internal_self_consumption: "3. Internal Self-Consumption",
+      legend_grid_export: "4. Grid Export",
+      note_solar_trends: "Full 30-day billing month multi-line performance chart trending: Solcast PV Forecast • Actual Solar Production • Internal Self-Consumption • Grid Export.",
+
+      bess_calibration_title: "BESS Interactive Calibration",
+      simulated_battery_capacity: "Simulated Battery Capacity (kWh)",
+      battery_capex_cost: "Battery CAPEX Capital Cost (THB)",
+      simulated_tariff_model: "Simulated Tariff Model",
+      tou_tariff_option: "TOU Tariff 1.3.2 (Peak / Off-Peak)",
+      tiered_tariff_option: "Normal Tiered Tariff 1.2 (Flat/Marginal)",
+      enable_grid_charging: "Enable Off-Peak Grid Charging (Smart TOU Arbitrage)",
+      btn_save_bess: "💾 Save & Recalculate Simulation",
+      bess_lookback_title: "12-Month Historical BESS Performance Simulation",
+      bess_lookback_desc: "Verify battery savings over a full year using daily cycling simulations across your past 12 months of Home Assistant grid export recorder database history. This counts seasonal variations in solar generation and export surpluses.",
+      btn_calc_bess: "🔍 Calculate 12-Month BESS Performance History",
+      btn_calc_bess_running: "🔄 Running daily battery cycling simulation over 365 days...",
+      annual_battery_savings: "Annual Simulated Battery Savings",
+      annual_shifted_energy: "12-Month Total Shifted Energy",
+      corrected_payback_period: "Corrected Payback Period",
+      col_month: "Month",
+      col_grid_export: "Grid Export Surplus (kWh)",
+      col_shifted_energy: "Simulated Shifted Energy (kWh)",
+      col_savings: "Calculated Savings (THB)",
+      btn_run_again: "🔄 Run Simulation Again",
+
+      tariff_optimizer_title: "Tariff Switch Justification Engine",
+      tariff_optimizer_desc: "To make an informed decision on whether to transition from Tiered Tariff 1.2 to TOU Tariff 1.3.2, you can run a lookback simulation over your past 12 months of Home Assistant recorder database history. This will show how seasonal temperature changes affect your monthly bills under both structures.",
+      no_lookback_yet: "No lookback simulation has been run for this cycle yet.",
+      btn_trigger_lookback: "🔍 Trigger 12-Month Lookback Analysis",
+      btn_running_lookback: "⏳ Running Database Analysis...",
+      simulation_cost_comparison: "12-Month Simulation Cost Comparison (THB)",
+      btn_rerun_analysis: "🔄 Re-run Analysis",
+      col_tiered_bill: "Tiered 1.2 Bill",
+      col_tou_bill: "TOU 1.3.2 Bill",
+      col_difference: "Difference",
+      col_winner: "Best Tariff",
+      tariff_regulations_title: "Tariff Transition Regulations",
+      tariff_11_pso: "Tariff 1.1 Free PSO Subsidy",
+      tariff_11_pso_val: "Free base charge if ≤ 50 kWh/month",
+      tariff_11_threshold: "Tariff 1.1 Exceed Threshold",
+      tariff_11_threshold_val: "> 150 kWh/month for 3 consecutive months",
+      auto_reclass_engine: "Auto-Reclassification Engine",
+      auto_reclass_engine_val: "Auto-switches calculation to Tariff 1.2",
+
+      outages_title: "Grid Outage & Reliability History",
+      incidents_label: "Incidents",
+      total_cumulative_downtime: "Total Cumulative Downtime",
+      outage_log_book: "Outage Log Book",
+      col_start_time: "Start Time",
+      col_end_time: "End Time",
+      col_duration: "Duration",
+      no_outages_recorded: "No outages recorded in the log book yet.",
+
+      settings_sensors_title: "Grid & Solar Sensors Configuration",
+      setting_import_sensor: "Grid Energy Import Sensor ID",
+      setting_export_sensor: "Grid Energy Export Sensor ID (Optional)",
+      setting_solar_sensor: "Solar Yield Production Sensor ID",
+      settings_utility_title: "Utility & Tariff Structure",
+      setting_provider: "Electricity Provider",
+      setting_tariff_category: "Tariff Classification Category",
+      setting_billing_day: "Billing Cycle Start Day",
+      settings_financial_title: "Financial & Subscription Options",
+      setting_ft_rate: "Ft Charge rate (THB / kWh)",
+      setting_sellback_rate: "Solar Buy-back sellback rate (THB / kWh)",
+      setting_ebill: "Active MEA e-Bill",
+      setting_epayment: "Active MEA e-Payment",
+      settings_custom_rates_title: "Custom Base Energy Rate Overrides (Optional)",
+      settings_custom_rates_desc: "Manually override statutory MEA/PEA base tariff rates (THB/kWh). Leave any field blank to automatically use official standard utility tariff schedules.",
+      setting_tou_peak_rate: "TOU Peak Rate (THB/kWh)",
+      setting_tou_offpeak_rate: "TOU Off-Peak Rate (THB/kWh)",
+      setting_tier1_rate: "Tier 1 Rate (0-150 kWh)",
+      setting_tier2_rate: "Tier 2 Rate (151-400 kWh)",
+      setting_tier3_rate: "Tier 3 / Flat Rate (>400 kWh)",
+      btn_save_settings: "💾 Save Configuration & Reload Integration",
+      btn_saving_settings: "⏳ Saving...",
+      btn_saved_settings: "✅ Saved & Reloaded!"
+    },
+
+    th: {
+      tab_overview: "ภาพรวมค่าไฟฟ้า",
+      tab_solar: "ผลตอบแทนโซลาร์เซลล์",
+      tab_bess: "แบบจำลองระบบแบตเตอรี่",
+      tab_optimizer: "เปรียบเทียบอัตราค่าไฟ",
+      tab_outages: "ประวัติไฟฟ้าดับ",
+      tab_settings: "⚙️ ตั้งค่า",
+
+      current_accrued_bill: "ยอดค่าไฟสะสมปัจจุบัน (ถึงวันนี้)",
+      projected_month_end: "ประมาณการสิ้นรอบบิล:",
+      run_rate: "อัตราเฉลี่ย",
+      projected_solar_offset: "มูลค่าที่โซลาร์ช่วยประหยัด:",
+      reduction_vs: "ลดลงจาก",
+      bill_without_solar: "ค่าไฟกรณีไม่มีโซลาร์",
+      accrued_base_energy_charge: "ค่าพลังงานไฟฟ้าฐานสะสม",
+      accrued_ft_charge: "ค่าไฟฟ้าผันแปร (Ft) สะสม",
+      fixed_service_charge: "ค่าบริการรายเดือน",
+      accrued_statutory_vat: "ภาษีมูลค่าเพิ่มสะสม (7%)",
+      detailed_consumption: "ข้อมูลการใช้ไฟฟ้าและอัตราค่าไฟ",
+      projected_month_end_volume: "ประมาณการหน่วยใช้ไฟฟ้าสิ้นรอบบิล:",
+      tou_window_status: "ช่วงเวลาอัตราค่าไฟ (TOU)",
+      active_marginal_rate: "อัตราค่าไฟส่วนเพิ่มปัจจุบัน",
+      energy_dashboard_price: "ราคาค่าไฟสำหรับ HA Energy Dashboard",
+      last_month_bill: "ยอดค่าไฟรอบบิลที่แล้ว",
+      lifetime_import: "หน่วยนำเข้าจากสายส่งสะสม",
+      offpeak_window: "ช่วง Off-Peak (ค่าไฟถูก)",
+      peak_window: "ช่วง Peak (ค่าไฟปกติ)",
+
+      chart_progression_title: "กราฟแสดงยอดค่าไฟฟ้าสะสมรายวันตลอดรอบบิล",
+      tou_base_split: "แยกตามช่วงเวลา TOU",
+      tiered_base_charge: "อัตราค่าไฟฐานแบบขั้นบันได",
+      legend_fixed_service: "1. ค่าบริการรายเดือน",
+      legend_peak_charge: "2. ค่าไฟฐานช่วง Peak",
+      legend_offpeak_charge: "3. ค่าไฟฐานช่วง Off-Peak",
+      legend_tier1: "2. ค่าไฟฐานขั้นที่ 1 (0-150)",
+      legend_tier2: "3. ค่าไฟฐานขั้นที่ 2 (151-400)",
+      legend_tier3: "4. ค่าไฟฐานขั้นที่ 3 (>400)",
+      legend_ft: "ค่า Ft",
+      legend_vat: "ภาษีมูลค่าเพิ่ม (7%)",
+      note_tou_progression: "กราฟจำลองการสะสมค่าไฟตามรอบบิล TOU อย่างแม่นยำ โดยค่าไฟฐานจะแบ่งตามวัน: ช่วง Peak (09:00 - 22:00 จันทร์-ศุกร์) • ช่วง Off-Peak (เวลานอกเหนือจากนี้ วันเสาร์-อาทิตย์ และวันหยุดราชการ)",
+      note_tiered_progression: "กราฟจำลองการสะสมค่าไฟตามรอบบิลอัตราก้าวหน้า โดยค่าไฟฐานแบ่งเป็น: ขั้นที่ 1 (150 หน่วยแรก) • ขั้นที่ 2 (250 หน่วยถัดไป) • ขั้นที่ 3 (ส่วนที่เกิน 400 หน่วย)",
+
+      chart_daily_title: "เปรียบเทียบหน่วยนำเข้าจากสายส่งและการผลิตโซลาร์รายวัน",
+      show_volume_kwh: "แสดงเป็นหน่วย (kWh)",
+      show_value_thb: "แสดงเป็นมูลค่า (บาท)",
+      legend_grid_import_kwh: "1. หน่วยนำเข้าจากสายส่ง (kWh)",
+      legend_grid_import_thb: "1. ค่าไฟฟ้าที่นำเข้าจากสายส่ง (บาท)",
+      legend_solar_prod_kwh: "2. หน่วยผลิตโซลาร์ (kWh)",
+      legend_solar_prod_thb: "2. มูลค่าผลประโยชน์จากโซลาร์ (บาท)",
+      hover_deltas_hint: "(เลื่อนเมาส์ชี้บนแท่งกราฟเพื่อดูข้อมูลรายวัน)",
+
+      solar_savings_title: "มูลค่าประหยัดจากการใช้ไฟโซลาร์เอง",
+      projected_month_end_savings: "ประมาณการประหยัดสิ้นรอบบิล:",
+      total_solar_production_vol: "หน่วยผลิตโซลาร์ทั้งหมด",
+      projected_full_month_yield: "ประมาณการหน่วยผลิตทั้งรอบบิล",
+      self_consumed_vol: "หน่วยที่ใช้เองในบ้าน",
+      lifetime_self_consumption_savings: "มูลค่าประหยัดสะสมตลอดการใช้งาน",
+      solar_revenue_title: "รายได้จากการขายไฟคืนสายส่ง",
+      projected_month_end_revenue: "ประมาณการรายได้สิ้นรอบบิล:",
+      export_buyback_rate: "ราคารับซื้อไฟคืน",
+      grid_export_vol: "หน่วยส่งไฟขายคืน",
+      lifetime_grid_export_revenue: "รายได้สะสมตลอดการใช้งาน",
+      solcast_title: "การพยากรณ์แสงอาทิตย์ (Solcast)",
+      solcast_status: "สถานะการเชื่อมต่อ Solcast",
+      solcast_integrated: "เชื่อมต่อ Solcast แล้ว",
+      solcast_simulated: "ข้อมูลจำลองพื้นฐาน",
+      estimated_gen_today: "ประมาณการผลิตวันนี้",
+      estimated_rem_today: "ประมาณการผลิตที่เหลือของวันนี้",
+      current_estimated_power: "กำลังผลิตโดยประมาณขณะนี้",
+      solar_performance_trends: "แนวโน้มการผลิตและใช้งานโซลาร์ตลอดรอบบิล",
+      legend_solcast_forecast: "1. พยากรณ์ Solcast PV",
+      legend_actual_solar_prod: "2. หน่วยผลิตจริงจากโซลาร์",
+      legend_internal_self_consumption: "3. การใช้งานเองภายในบ้าน",
+      legend_grid_export: "4. การส่งออกขายคืน",
+      note_solar_trends: "กราฟติดตามประสิทธิภาพโซลาร์ตลอด 30 วัน: พยากรณ์ Solcast PV • หน่วยผลิตจริงจากโซลาร์ • การใช้งานเองภายในบ้าน • การส่งออกขายคืน",
+
+      bess_calibration_title: "การตั้งค่าและคำนวณขนาดแบตเตอรี่ (BESS)",
+      simulated_battery_capacity: "ความจุของแบตเตอรี่ (kWh)",
+      battery_capex_cost: "งบลงทุนอุปกรณ์โดยประมาณ (บาท)",
+      simulated_tariff_model: "แบบจำลองอัตราค่าไฟฟ้า",
+      tou_tariff_option: "อัตรา TOU 1.3.2 (ช่วง Peak / Off-Peak)",
+      tiered_tariff_option: "อัตราก้าวหน้า 1.2 (ตามขั้นบันได)",
+      enable_grid_charging: "เปิดใช้งานการชาร์จไฟข้ามคืนจากสายส่ง (TOU Arbitrage)",
+      btn_save_bess: "💾 บันทึกและคำนวณแบบจำลองใหม่",
+      bess_lookback_title: "แบบจำลองผลตอบแทน BESS ย้อนหลัง 12 เดือน",
+      bess_lookback_desc: "วิเคราะห์ความคุ้มค่าของแบตเตอรี่ตลอดทั้งปีโดยจำลองการชาร์จ-จ่ายไฟรายวันจากประวัติการส่งออกไฟย้อนหลัง 12 เดือนในฐานข้อมูล Home Assistant เพื่อคำนึงถึงความแปรปรวนตามฤดูกาล",
+      btn_calc_bess: "🔍 คำนวณผลตอบแทน BESS ย้อนหลัง 12 เดือน",
+      btn_calc_bess_running: "🔄 กำลังประมวลผลการจำลองรอบชาร์จ-จ่ายไฟตลอด 365 วัน...",
+      annual_battery_savings: "มูลค่าประหยัดรวมต่อปีจากแบตเตอรี่",
+      annual_shifted_energy: "หน่วยไฟฟ้าที่กักเก็บและจ่ายรวมต่อปี",
+      corrected_payback_period: "ระยะเวลาคืนทุนโดยประมาณ",
+      col_month: "เดือน",
+      col_grid_export: "หน่วยส่งไฟขายคืนส่วนเกิน (kWh)",
+      col_shifted_energy: "หน่วยไฟที่ชาร์จและจ่ายคืน (kWh)",
+      col_savings: "มูลค่าประหยัดที่คำนวณได้ (บาท)",
+      btn_run_again: "🔄 คำนวณแบบจำลองอีกครั้ง",
+
+      tariff_optimizer_title: "ระบบวิเคราะห์และเปรียบเทียบอัตราค่าไฟฟ้า",
+      tariff_optimizer_desc: "เพื่อการตัดสินใจเปลี่ยนจากอัตราก้าวหน้า 1.2 เป็นอัตรา TOU 1.3.2 อย่างมั่นใจ คุณสามารถเรียกใช้การจำลองย้อนหลัง 12 เดือนจากฐานข้อมูล Home Assistant เพื่อดูผลกระทบจากการใช้ไฟตามฤดูกาล",
+      no_lookback_yet: "ยังไม่มีการประมวลผลแบบจำลองย้อนหลังสำหรับรอบบิลนี้",
+      btn_trigger_lookback: "🔍 เริ่มการวิเคราะห์ย้อนหลัง 12 เดือน",
+      btn_running_lookback: "⏳ กำลังประมวลผลข้อมูลจากฐานข้อมูล...",
+      simulation_cost_comparison: "เปรียบเทียบค่าไฟฟ้าย้อนหลัง 12 เดือน (บาท)",
+      btn_rerun_analysis: "🔄 ประมวลผลการวิเคราะห์ใหม่",
+      col_tiered_bill: "ค่าไฟอัตรา 1.2",
+      col_tou_bill: "ค่าไฟอัตรา 1.3.2",
+      col_difference: "ส่วนต่าง",
+      col_winner: "อัตราที่คุ้มค่ากว่า",
+      tariff_regulations_title: "ข้อกำหนดและระเบียบการเปลี่ยนอัตราค่าไฟ",
+      tariff_11_pso: "มาตรการค่าไฟฟ้าฟรี (PSO 1.1)",
+      tariff_11_pso_val: "ฟรีค่าพลังงานไฟฟ้าฐานหากใช้ไฟไม่เกิน 50 หน่วย/เดือน",
+      tariff_11_threshold: "เกณฑ์การเปลี่ยนอัตรา 1.1",
+      tariff_11_threshold_val: "ใช้ไฟเกิน 150 หน่วย/เดือน ติดต่อกัน 3 เดือน",
+      auto_reclass_engine: "ระบบปรับเปลี่ยนอัตโนมัติ",
+      auto_reclass_engine_val: "ปรับการคำนวณเป็นอัตรา 1.2 โดยอัตโนมัติ",
+
+      outages_title: "ประวัติไฟฟ้าดับและความเสถียรของสายส่ง",
+      incidents_label: "ครั้ง",
+      total_cumulative_downtime: "ระยะเวลารวมที่ไฟฟ้าดับ",
+      outage_log_book: "บันทึกเหตุการณ์ไฟฟ้าดับ",
+      col_start_time: "เวลาเริ่มต้น",
+      col_end_time: "เวลาสิ้นสุด",
+      col_duration: "ระยะเวลา",
+      no_outages_recorded: "ยังไม่มีบันทึกเหตุการณ์ไฟฟ้าดับในระบบ",
+
+      settings_sensors_title: "การตั้งค่าเซ็นเซอร์สายส่งและโซลาร์",
+      setting_import_sensor: "Entity ID เซ็นเซอร์นำเข้าไฟฟ้าจากสายส่ง",
+      setting_export_sensor: "Entity ID เซ็นเซอร์ส่งออกไฟฟ้าขายคืน (ถ้ามี)",
+      setting_solar_sensor: "Entity ID เซ็นเซอร์หน่วยผลิตจากโซลาร์เซลล์",
+      settings_utility_title: "โครงสร้างการไฟฟ้าและอัตราค่าไฟ",
+      setting_provider: "หน่วยงานผู้ให้บริการไฟฟ้า",
+      setting_tariff_category: "ประเภทอัตราค่าไฟฟ้า",
+      setting_billing_day: "วันเริ่มต้นรอบบิลประจำเดือน",
+      settings_financial_title: "อัตราค่าบริการและเงื่อนไขทางการเงิน",
+      setting_ft_rate: "อัตราค่า Ft (บาท / kWh)",
+      setting_sellback_rate: "ราคารับซื้อไฟคืนโครงการโซลาร์ (บาท / kWh)",
+      setting_ebill: "สมัครบริการ MEA e-Bill",
+      setting_epayment: "สมัครบริการ MEA e-Payment",
+      settings_custom_rates_title: "กำหนดอัตราค่าไฟฐานเอง (ทางเลือกเพิ่มเติม)",
+      settings_custom_rates_desc: "กำหนดอัตราค่าไฟฟ้าฐานของการไฟฟ้า (บาท/kWh) เอง หากเว้นว่างไว้ ระบบจะใช้อัตรามาตรฐานตามประกาศของการไฟฟ้าโดยอัตโนมัติ",
+      setting_tou_peak_rate: "อัตรา TOU ช่วง Peak (บาท/kWh)",
+      setting_tou_offpeak_rate: "อัตรา TOU ช่วง Off-Peak (บาท/kWh)",
+      setting_tier1_rate: "อัตราขั้นที่ 1 (0-150 kWh)",
+      setting_tier2_rate: "อัตราขั้นที่ 2 (151-400 kWh)",
+      setting_tier3_rate: "อัตราขั้นที่ 3 / อัตราคงที่ (>400 kWh)",
+      btn_save_settings: "💾 บันทึกการตั้งค่าและเริ่มการทำงานใหม่",
+      btn_saving_settings: "⏳ กำลังบันทึก...",
+      btn_saved_settings: "✅ บันทึกและเริ่มการทำงานใหม่สำเร็จ!"
+    }
+  };
+
   class ThaiEnergyPanel extends HTMLElement {
   constructor() {
     super();
@@ -25,10 +327,37 @@
     this._isBessAnalyzing = false;
     this._data = {};
     this._rendered = false;
+    this._lang = this._resolveLanguage();
+  }
+
+  _resolveLanguage() {
+    try {
+      const saved = localStorage.getItem('thai_energy_language');
+      if (saved === 'en' || saved === 'th') {
+        return saved;
+      }
+    } catch (e) {}
+
+    const haLang = this._hass?.language || this._hass?.locale?.language || navigator.language || 'en';
+    return haLang.toLowerCase().startsWith('th') ? 'th' : 'en';
+  }
+
+  t(key) {
+    const lang = this._lang || this._resolveLanguage();
+    if (TRANSLATIONS[lang] && TRANSLATIONS[lang][key] !== undefined) {
+      return TRANSLATIONS[lang][key];
+    }
+    if (TRANSLATIONS.en && TRANSLATIONS.en[key] !== undefined) {
+      return TRANSLATIONS.en[key];
+    }
+    return key;
   }
 
   set hass(hass) {
     this._hass = hass;
+    if (!this._lang) {
+      this._lang = this._resolveLanguage();
+    }
 
     const now = Date.now();
     if (this._lastHassUpdate && (now - this._lastHassUpdate < 500)) {
@@ -655,6 +984,30 @@
       });
     });
 
+    const btnLangEn = shadow.getElementById('btn-lang-en');
+    if (btnLangEn) {
+      btnLangEn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this._lang !== 'en') {
+          this._lang = 'en';
+          try { localStorage.setItem('thai_energy_language', 'en'); } catch (err) {}
+          this._initialRender();
+        }
+      });
+    }
+
+    const btnLangTh = shadow.getElementById('btn-lang-th');
+    if (btnLangTh) {
+      btnLangTh.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this._lang !== 'th') {
+          this._lang = 'th';
+          try { localStorage.setItem('thai_energy_language', 'th'); } catch (err) {}
+          this._initialRender();
+        }
+      });
+    }
+
     const toggleBtns = shadow.querySelectorAll('.toggle-btn');
     toggleBtns.forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -677,30 +1030,30 @@
 
         const currentDay = this._data.currentDayOfCycle;
         const statusLabel = bar.isWeekend
-          ? 'Weekend (100% Off-Peak)'
-          : (bar.isPastOrToday ? (bar.day === currentDay ? 'Today (Live)' : 'Past') : 'Projected');
+          ? this.t('status_weekend_offpeak')
+          : (bar.isPastOrToday ? (bar.day === currentDay ? this.t('status_today_live') : this.t('status_past')) : this.t('status_projected'));
 
         const html = `
           <div class="tt-title">
-            <span>Day ${bar.day}</span>
+            <span>${this.t('day_label')} ${bar.day}</span>
             <span style="color: ${bar.isWeekend ? '#90caf9' : '#fff'}; font-weight: 500; font-size: 11px;">${statusLabel}</span>
           </div>
-          <div class="tt-row"><span style="color:#bbb;">Cumulative Bill:</span><strong style="color:#4caf50;">฿${bar.total.toFixed(2)}</strong></div>
-          <div class="tt-row"><span style="color:#bbb;">Added on Day ${bar.day}:</span><strong style="color:var(--primary-color, #03a9f4);">+฿${(bar.dayPeakCost + bar.dayOffpeakCost).toFixed(2)}</strong></div>
+          <div class="tt-row"><span style="color:#bbb;">${this.t('tt_cumulative_bill')}</span><strong style="color:#4caf50;">฿${bar.total.toFixed(2)}</strong></div>
+          <div class="tt-row"><span style="color:#bbb;">${this.t('tt_added_on_day')} ${bar.day}:</span><strong style="color:var(--primary-color, #03a9f4);">+฿${(bar.dayPeakCost + bar.dayOffpeakCost).toFixed(2)}</strong></div>
           <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 11px;">
             ${this._data.isTou ? `
-              <div class="tt-row"><span><span class="tt-dot" style="background:#9e9e9e;"></span>Fixed Service:</span><span>฿${bar.service.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#1565c0;"></span>Peak Base Charge:</span><span>฿${bar.peak.toFixed(2)} (+฿${bar.dayPeakCost.toFixed(2)})</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#90caf9;"></span>Off-Peak Base Charge:</span><span>฿${bar.offpeak.toFixed(2)} (+฿${bar.dayOffpeakCost.toFixed(2)})</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#ff9800;"></span>Ft Charge:</span><span>฿${bar.ft.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#e91e63;"></span>Statutory VAT (7%):</span><span>฿${bar.vat.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#9e9e9e;"></span>${this.t('legend_fixed_service')}:</span><span>฿${bar.service.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#1565c0;"></span>${this.t('legend_peak_charge')}:</span><span>฿${bar.peak.toFixed(2)} (+฿${bar.dayPeakCost.toFixed(2)})</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#90caf9;"></span>${this.t('legend_offpeak_charge')}:</span><span>฿${bar.offpeak.toFixed(2)} (+฿${bar.dayOffpeakCost.toFixed(2)})</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#ff9800;"></span>${this.t('legend_ft')}:</span><span>฿${bar.ft.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#e91e63;"></span>${this.t('legend_vat')}:</span><span>฿${bar.vat.toFixed(2)}</span></div>
             ` : `
-              <div class="tt-row"><span><span class="tt-dot" style="background:#9e9e9e;"></span>Fixed Service:</span><span>฿${bar.service.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#1976d2;"></span>Tier 1 (0-150):</span><span>฿${bar.tier1.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#2196f3;"></span>Tier 2 (151-400):</span><span>฿${bar.tier2.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#64b5f6;"></span>Tier 3 (>400):</span><span>฿${bar.tier3.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#ff9800;"></span>Ft Charge:</span><span>฿${bar.ft.toFixed(2)}</span></div>
-              <div class="tt-row"><span><span class="tt-dot" style="background:#e91e63;"></span>Statutory VAT (7%):</span><span>฿${bar.vat.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#9e9e9e;"></span>${this.t('legend_fixed_service')}:</span><span>฿${bar.service.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#1976d2;"></span>${this.t('legend_tier1')}:</span><span>฿${bar.tier1.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#2196f3;"></span>${this.t('legend_tier2')}:</span><span>฿${bar.tier2.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#64b5f6;"></span>${this.t('legend_tier3')}:</span><span>฿${bar.tier3.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#ff9800;"></span>${this.t('legend_ft')}:</span><span>฿${bar.ft.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#e91e63;"></span>${this.t('legend_vat')}:</span><span>฿${bar.vat.toFixed(2)}</span></div>
             `}
           </div>
         `;
@@ -724,35 +1077,32 @@
         if (!item) return;
         const currentDay = this._data.currentDayOfCycle;
         const statusLabel = item.day === currentDay
-          ? 'Today (Live)'
-          : (item.day < currentDay ? 'Past Actual' : 'Projected Run-Rate');
+          ? this.t('status_today_live')
+          : (item.day < currentDay ? this.t('status_past_actual') : this.t('status_projected_runrate'));
 
         const expKwh = this._data.solarMonthlyTrends[dayIdx]?.export || 0;
         const selfKwh = Math.max(0, item.solarKwh - expKwh);
 
         const html = `
           <div class="tt-title">
-            <span>Day ${item.day}</span>
+            <span>${this.t('day_label')} ${item.day}</span>
             <span style="color: #bbb; font-weight: 500; font-size: 11px;">${statusLabel}</span>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#2196f3;"></span>Grid Import:</span>
+            <span><span class="tt-dot" style="background:#2196f3;"></span>${this.t('tt_grid_import')}</span>
             <strong style="color:#2196f3;">${item.importKwh.toFixed(2)} kWh <span style="color:#aaa; font-weight:normal;">(฿${item.importCost.toFixed(2)})</span></strong>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#4caf50;"></span>Solar Production:</span>
+            <span><span class="tt-dot" style="background:#4caf50;"></span>${this.t('tt_solar_production')}</span>
             <strong style="color:#4caf50;">${item.solarKwh.toFixed(2)} kWh <span style="color:#aaa; font-weight:normal;">(฿${item.solarBenefit.toFixed(2)})</span></strong>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#00e5ff;"></span>Self-Consumed:</span>
+            <span><span class="tt-dot" style="background:#00e5ff;"></span>${this.t('tt_self_consumed')}</span>
             <span style="color:#00e5ff;">${selfKwh.toFixed(2)} kWh</span>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#e91e63;"></span>Grid Export:</span>
+            <span><span class="tt-dot" style="background:#e91e63;"></span>${this.t('tt_grid_export')}</span>
             <span style="color:#e91e63;">${expKwh.toFixed(2)} kWh</span>
-          </div>
-          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 11px; color:#bbb;">
-            Net Grid Import: <strong style="color:#fff;">${Math.max(0, item.importKwh - expKwh).toFixed(2)} kWh</strong>
           </div>
         `;
         this._showTooltip(html, e.clientX, e.clientY);
@@ -781,8 +1131,8 @@
         if (!t) return;
         const currentDay = this._data.currentDayOfCycle;
         const statusLabel = t.day === currentDay
-          ? 'Today (Live)'
-          : (t.day < currentDay ? 'Historical' : 'Forecast Projected');
+          ? this.t('status_today_live')
+          : (t.day < currentDay ? this.t('status_past') : this.t('status_projected'));
 
         const perfPct = t.solcast > 0 ? ((t.production / t.solcast) * 100).toFixed(0) : 0;
 
@@ -816,27 +1166,27 @@
 
         const html = `
           <div class="tt-title">
-            <span>Day ${t.day}</span>
+            <span>${this.t('day_label')} ${t.day}</span>
             <span style="color: #bbb; font-weight: 500; font-size: 11px;">${statusLabel}</span>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#4caf50;"></span>Actual Solar Yield:</span>
+            <span><span class="tt-dot" style="background:#4caf50;"></span>${this.t('tt_production_yield')}</span>
             <strong style="color:#4caf50;">${t.production.toFixed(2)} kWh</strong>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#ff9800;"></span>Solcast PV Forecast:</span>
+            <span><span class="tt-dot" style="background:#ff9800;"></span>${this.t('tt_solcast_forecast')}</span>
             <strong style="color:#ff9800;">${t.solcast.toFixed(2)} kWh</strong>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#00e5ff;"></span>Internal Self-Consumption:</span>
+            <span><span class="tt-dot" style="background:#00e5ff;"></span>${this.t('tt_self_consumption')}</span>
             <strong style="color:#00e5ff;">${t.selfConsumption.toFixed(2)} kWh</strong>
           </div>
           <div class="tt-row">
-            <span><span class="tt-dot" style="background:#e91e63;"></span>Grid Export:</span>
+            <span><span class="tt-dot" style="background:#e91e63;"></span>${this.t('tt_surplus_export')}</span>
             <strong style="color:#e91e63;">${t.export.toFixed(2)} kWh</strong>
           </div>
           <div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 11px; color:#bbb;">
-            Forecast Ratio: <strong style="color:#fff;">${perfPct}% of theoretical max</strong>
+            ${this.t('tt_forecast_accuracy')} <strong style="color:#fff;">${perfPct}%</strong>
           </div>
         `;
         this._showTooltip(html, e.clientX, e.clientY);
@@ -1316,6 +1666,50 @@
           font-weight: 600;
         }
 
+        .lang-selector {
+          display: inline-flex;
+          align-items: center;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          border-radius: 8px;
+          padding: 3px;
+          gap: 4px;
+          margin-left: 10px;
+        }
+
+        .flag-btn {
+          background: transparent;
+          border: 2px solid transparent;
+          border-radius: 5px;
+          padding: 3px 6px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0.5;
+          transition: all 0.2s ease;
+          outline: none;
+        }
+
+        .flag-btn:hover {
+          opacity: 0.85;
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .flag-btn.active {
+          opacity: 1;
+          background: rgba(255, 255, 255, 0.15);
+          border-color: var(--primary-color, #03a9f4);
+          box-shadow: 0 0 8px rgba(3, 169, 244, 0.4);
+        }
+
+        .flag-icon {
+          border-radius: 2px;
+          display: block;
+          overflow: hidden;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+        }
+
         .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -1658,82 +2052,111 @@
       <!-- Navigation Tabs -->
       <div class="tabs">
         <button class="tab-btn ${this._activeTab === 'overview' ? 'active' : ''}" data-tab="overview">
-          Billing Overview
+          ${this.t('tab_overview')}
         </button>
         <button class="tab-btn ${this._activeTab === 'solar' ? 'active' : ''}" data-tab="solar">
-          Solar ROI
+          ${this.t('tab_solar')}
         </button>
         <button class="tab-btn ${this._activeTab === 'bess' ? 'active' : ''}" data-tab="bess">
-          BESS Simulation
+          ${this.t('tab_bess')}
         </button>
         <button class="tab-btn ${this._activeTab === 'predictive' ? 'active' : ''}" data-tab="predictive">
-          Tariff Optimizer
+          ${this.t('tab_optimizer')}
         </button>
         <button class="tab-btn ${this._activeTab === 'outages' ? 'active' : ''}" data-tab="outages">
-          Grid Outages
+          ${this.t('tab_outages')}
         </button>
         <button class="tab-btn ${this._activeTab === 'settings' ? 'active' : ''}" data-tab="settings" style="margin-left: auto;">
-          ⚙️ Settings
+          ${this.t('tab_settings')}
         </button>
+
+        <!-- Flag Language Switcher (Australian 🇦🇺 / Thai 🇹🇭 Vector Flags) -->
+        <div class="lang-selector">
+          <button class="flag-btn ${this._lang === 'en' ? 'active' : ''}" id="btn-lang-en" title="English (Australia)">
+            <svg class="flag-icon" viewBox="0 0 640 320" width="22" height="15">
+              <rect width="640" height="320" fill="#00008B"/>
+              <g clip-path="url(#canton-clip)">
+                <clipPath id="canton-clip"><rect width="320" height="160"/></clipPath>
+                <path d="M0,0 L320,160 M320,0 L0,160" stroke="#FFF" stroke-width="32"/>
+                <path d="M0,0 L320,160 M320,0 L0,160" stroke="#C8102E" stroke-width="20"/>
+                <path d="M160,0 V160 M0,80 H320" stroke="#FFF" stroke-width="50"/>
+                <path d="M160,0 V160 M0,80 H320" stroke="#C8102E" stroke-width="30"/>
+              </g>
+              <polygon points="160,200 166,220 186,212 174,228 190,242 170,244 172,264 160,250 148,264 150,244 130,242 146,228 134,212 154,220" fill="#FFF"/>
+              <circle cx="480" cy="270" r="14" fill="#FFF"/>
+              <circle cx="420" cy="140" r="14" fill="#FFF"/>
+              <circle cx="480" cy="60" r="14" fill="#FFF"/>
+              <circle cx="535" cy="115" r="14" fill="#FFF"/>
+              <circle cx="505" cy="175" r="9" fill="#FFF"/>
+            </svg>
+          </button>
+          <button class="flag-btn ${this._lang === 'th' ? 'active' : ''}" id="btn-lang-th" title="ภาษาไทย">
+            <svg class="flag-icon" viewBox="0 0 900 600" width="22" height="15">
+              <rect width="900" height="600" fill="#ED1C24"/>
+              <rect y="100" width="900" height="400" fill="#FFFFFF"/>
+              <rect y="200" width="900" height="200" fill="#241D4F"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- Tab 1: Detailed Billing Overview -->
       ${this._activeTab === 'overview' ? `
         <div class="grid two-col">
           <div class="card">
-            <h2>Current Accrued Bill (To Date) <span>(THB)</span></h2>
+            <h2>${this.t('current_accrued_bill')} <span>(THB)</span></h2>
             <div class="metric-main" id="val-accrued-bill">฿${this._formatNum(d.accruedBill)}</div>
             <div style="font-size: 13px; color: var(--primary-color, #03a9f4); margin-bottom: 4px; font-weight: 500;">
-              Projected Month-End: <strong>฿${this._formatNum(d.totalBill)}</strong> (${this._formatNum(d.projectedImport)} kWh run-rate)
+              ${this.t('projected_month_end')} <strong>฿${this._formatNum(d.totalBill)}</strong> (${this._formatNum(d.projectedImport)} kWh ${this.t('run_rate')})
             </div>
             <div style="font-size: 12px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;" id="val-projected-solar-benefit-line">
-              Projected Solar Offset: <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% reduction vs ฿${this._formatNum(d.projectedBillWithoutSolar)} bill without solar)
+              ${this.t('projected_solar_offset')} <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% ${this.t('reduction_vs')} ฿${this._formatNum(d.projectedBillWithoutSolar)} ${this.t('bill_without_solar')})
             </div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Accrued Base Energy Charge</span>
+                <span class="label">${this.t('accrued_base_energy_charge')}</span>
                 <span class="val" id="val-base-cost">฿${this._formatNum(d.accruedBaseCost)}</span>
               </div>
               <div class="row">
-                <span class="label">Accrued Ft Charge (${d.ftRate} ฿/kWh)</span>
+                <span class="label">${this.t('accrued_ft_charge')} (${d.ftRate} ฿/kWh)</span>
                 <span class="val" id="val-ft-charge">฿${this._formatNum(d.accruedFtCharge)}</span>
               </div>
               <div class="row">
-                <span class="label">Fixed Service Charge</span>
+                <span class="label">${this.t('fixed_service_charge')}</span>
                 <span class="val">฿${this._formatNum(d.serviceCharge)}</span>
               </div>
               <div class="row">
-                <span class="label">Accrued Statutory VAT (7%)</span>
+                <span class="label">${this.t('accrued_statutory_vat')}</span>
                 <span class="val" id="val-vat-amount">฿${this._formatNum(d.accruedVatAmount)}</span>
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>Detailed Consumption & Rates</h2>
+            <h2>${this.t('detailed_consumption')}</h2>
             <div class="metric-main" style="color: var(--primary-color, #03a9f4);"><span id="val-import-kwh">${this._formatNum(d.importKwh)}</span> <span style="font-size: 18px;">kWh</span></div>
             <div style="font-size: 13px; color: #9e9e9e; margin-bottom: 12px;">
-              Projected Month-End Volume: <strong>${this._formatNum(d.projectedImport)} kWh</strong>
+              ${this.t('projected_month_end_volume')} <strong>${this._formatNum(d.projectedImport)} kWh</strong>
             </div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">TOU Window Status</span>
-                <span class="val" id="val-tou-status">${d.touStatus}</span>
+                <span class="label">${this.t('tou_window_status')}</span>
+                <span class="val" id="val-tou-status">${d.isOffpeak ? this.t('offpeak_window') : this.t('peak_window')}</span>
               </div>
               <div class="row">
-                <span class="label">Active Marginal Retail Rate</span>
+                <span class="label">${this.t('active_marginal_rate')}</span>
                 <span class="val">฿${this._formatNum(d.marginalRate)} / kWh</span>
               </div>
               <div class="row">
-                <span class="label">HA Energy Dashboard Price Entity</span>
+                <span class="label">${this.t('energy_dashboard_price')}</span>
                 <span class="val">฿${this._formatNum(d.gridPrice)} / kWh</span>
               </div>
               <div class="row">
-                <span class="label">Last Month Total Bill</span>
+                <span class="label">${this.t('last_month_bill')}</span>
                 <span class="val">฿${this._formatNum(d.lastMonthBill)} (${this._formatNum(d.lastMonthImport)} kWh)</span>
               </div>
               <div class="row">
-                <span class="label">Lifetime Grid Import Volume</span>
+                <span class="label">${this.t('lifetime_import')}</span>
                 <span class="val">${this._formatNum(d.lifetimeImport)} kWh</span>
               </div>
             </div>
@@ -1741,21 +2164,21 @@
 
           <!-- Full Width Cumulative Month Cost Chart with Labeled Y-Axis & Baseline Subtraction Engine -->
           <div class="card full-width">
-            <h2>Cumulative Monthly Running Bill Progression (${d.isTou ? 'TOU Base Split' : 'Tiered Base Charge'})</h2>
+            <h2>${this.t('chart_progression_title')} (${d.isTou ? this.t('tou_base_split') : this.t('tiered_base_charge')})</h2>
             <div class="chart-legend">
               ${d.isTou ? `
-                <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service</div>
-                <div class="legend-item"><div class="legend-dot seg-peak"></div> 2. Peak Base Charge</div>
-                <div class="legend-item"><div class="legend-dot seg-offpeak"></div> 3. Off-Peak Base Charge</div>
-                <div class="legend-item"><div class="legend-dot seg-ft"></div> 4. Ft Charge</div>
-                <div class="legend-item"><div class="legend-dot seg-vat"></div> 5. VAT (7%)</div>
+                <div class="legend-item"><div class="legend-dot seg-service"></div> ${this.t('legend_fixed_service')}</div>
+                <div class="legend-item"><div class="legend-dot seg-peak"></div> ${this.t('legend_peak_charge')}</div>
+                <div class="legend-item"><div class="legend-dot seg-offpeak"></div> ${this.t('legend_offpeak_charge')}</div>
+                <div class="legend-item"><div class="legend-dot seg-ft"></div> 4. ${this.t('legend_ft')}</div>
+                <div class="legend-item"><div class="legend-dot seg-vat"></div> 5. ${this.t('legend_vat')}</div>
               ` : `
-                <div class="legend-item"><div class="legend-dot seg-service"></div> 1. Fixed Service</div>
-                <div class="legend-item"><div class="legend-dot seg-tier1"></div> 2. Base Tier 1 (0-150)</div>
-                <div class="legend-item"><div class="legend-dot seg-tier2"></div> 3. Base Tier 2 (151-400)</div>
-                <div class="legend-item"><div class="legend-dot seg-tier3"></div> 4. Base Tier 3 (&gt;400)</div>
-                <div class="legend-item"><div class="legend-dot seg-ft"></div> 5. Ft Charge</div>
-                <div class="legend-item"><div class="legend-dot seg-vat"></div> 6. VAT (7%)</div>
+                <div class="legend-item"><div class="legend-dot seg-service"></div> ${this.t('legend_fixed_service')}</div>
+                <div class="legend-item"><div class="legend-dot seg-tier1"></div> ${this.t('legend_tier1')}</div>
+                <div class="legend-item"><div class="legend-dot seg-tier2"></div> ${this.t('legend_tier2')}</div>
+                <div class="legend-item"><div class="legend-dot seg-tier3"></div> ${this.t('legend_tier3')}</div>
+                <div class="legend-item"><div class="legend-dot seg-ft"></div> 5. ${this.t('legend_ft')}</div>
+                <div class="legend-item"><div class="legend-dot seg-vat"></div> 6. ${this.t('legend_vat')}</div>
               `}
             </div>
 
@@ -1811,29 +2234,20 @@
             </div>
 
             <div class="note-box">
-              ${d.isTou ? `
-                Accurate progressive Time of Use billing cycle progression. Base Charge is split daily:
-                <strong style="color: #1565c0;">Peak Charge</strong> (09:00 - 22:00, Mon-Fri) &bull;
-                <strong style="color: #90caf9;">Off-Peak Charge</strong> (all other hours, weekends, and holidays).
-              ` : `
-                Accurate progressive tiered billing cycle progression. Base Charge is split daily:
-                <strong style="color: #1976d2;">Tier 1</strong> (first 150 kWh) &bull;
-                <strong style="color: #2196f3;">Tier 2</strong> (next 250 kWh) &bull;
-                <strong style="color: #64b5f6;">Tier 3</strong> (excess over 400 kWh).
-              `}
+              ${d.isTou ? this.t('note_tou_progression') : this.t('note_tiered_progression')}
             </div>
           </div>
 
           <!-- Card: Daily Import vs Solar Comparison (Interactive Mode Toggle) -->
           <div class="card full-width">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); padding-bottom: 10px; margin-bottom: 16px;">
-              <h2 style="border-bottom: none; padding-bottom: 0; margin: 0;">Daily Grid Import vs Solar Production</h2>
+              <h2 style="border-bottom: none; padding-bottom: 0; margin: 0;">${this.t('chart_daily_title')}</h2>
               <div style="display: flex; gap: 6px;">
                 <button class="toggle-btn ${this._dailyChartMode === 'kwh' ? 'active' : ''}" data-mode="kwh" style="background-color: ${this._dailyChartMode === 'kwh' ? 'var(--primary-color, #03a9f4)' : 'rgba(255,255,255,0.05)'}; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 12px; font-size: 11px; cursor: pointer; outline: none; font-weight: 500;">
-                  Show Volume (kWh)
+                  ${this.t('show_volume_kwh')}
                 </button>
                 <button class="toggle-btn ${this._dailyChartMode === 'thb' ? 'active' : ''}" data-mode="thb" style="background-color: ${this._dailyChartMode === 'thb' ? 'var(--primary-color, #03a9f4)' : 'rgba(255,255,255,0.05)'}; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 12px; font-size: 11px; cursor: pointer; outline: none; font-weight: 500;">
-                  Show Value (THB)
+                  ${this.t('show_value_thb')}
                 </button>
               </div>
             </div>
@@ -1860,22 +2274,22 @@
 
                 <!-- X-Axis Labels (Days 1 to 30) -->
                 <div class="svg-x-axis-labels">
-                  <span>Day 1</span>
-                  <span>Day 5</span>
-                  <span>Day 10</span>
-                  <span>Day 15</span>
-                  <span>Day 20</span>
-                  <span>Day 25</span>
-                  <span>Day 30</span>
+                  <span>${this.t('day_label')} 1</span>
+                  <span>${this.t('day_label')} 5</span>
+                  <span>${this.t('day_label')} 10</span>
+                  <span>${this.t('day_label')} 15</span>
+                  <span>${this.t('day_label')} 20</span>
+                  <span>${this.t('day_label')} 25</span>
+                  <span>${this.t('day_label')} 30</span>
                 </div>
               </div>
             </div>
 
             <div class="chart-legend" style="margin-top: 14px;">
-              <div class="legend-item"><div class="legend-dot" style="background-color: #2196f3;"></div> 1. Grid Import (${mode === 'kwh' ? 'Consumption Volume' : 'Incremental Cost'})</div>
-              <div class="legend-item"><div class="legend-dot" style="background-color: #4caf50;"></div> 2. Solar Production (${mode === 'kwh' ? 'Yield Volume' : 'Financial Benefit'})</div>
+              <div class="legend-item"><div class="legend-dot" style="background-color: #2196f3;"></div> ${mode === 'kwh' ? this.t('legend_grid_import_kwh') : this.t('legend_grid_import_thb')}</div>
+              <div class="legend-item"><div class="legend-dot" style="background-color: #4caf50;"></div> ${mode === 'kwh' ? this.t('legend_solar_prod_kwh') : this.t('legend_solar_prod_thb')}</div>
               <div style="font-size: 11px; color: var(--secondary-text-color, #9e9e9e); margin-left: auto;">
-                (Hover over bars to view exact daily deltas)
+                ${this.t('hover_deltas_hint')}
               </div>
             </div>
           </div>
@@ -1886,71 +2300,71 @@
       ${this._activeTab === 'solar' ? `
         <div class="grid">
           <div class="card">
-            <h2>Solar Self-Consumption Savings</h2>
+            <h2>${this.t('solar_savings_title')}</h2>
             <div class="metric-main saving" id="val-solar-savings-main">฿${this._formatNum(d.solarSavings)}</div>
             <div style="font-size: 13px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;">
-              Projected Month-End Savings: <strong id="val-projected-solar-savings">฿${this._formatNum(d.projectedSolarSavings)} (${this._formatNum(d.projectedSelfConsumptionKwh)} kWh)</strong>
+              ${this.t('projected_month_end_savings')} <strong id="val-projected-solar-savings">฿${this._formatNum(d.projectedSolarSavings)} (${this._formatNum(d.projectedSelfConsumptionKwh)} kWh)</strong>
             </div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Total Solar Production Volume</span>
+                <span class="label">${this.t('total_solar_production_vol')}</span>
                 <span class="val" id="val-solar-volume">${d.solarKwh} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Projected Full Month Yield</span>
+                <span class="label">${this.t('projected_full_month_yield')}</span>
                 <span class="val saving" id="val-projected-solar-volume">${this._formatNum(d.projectedSolarKwh)} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Self-Consumed Volume</span>
+                <span class="label">${this.t('self_consumed_vol')}</span>
                 <span class="val" id="val-self-consumed-volume">${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)</span>
               </div>
               <div class="row">
-                <span class="label">Lifetime Self-Consumption Savings</span>
+                <span class="label">${this.t('lifetime_self_consumption_savings')}</span>
                 <span class="val saving" id="val-lifetime-savings">฿${this._formatNum(d.lifetimeSolarSavings)}</span>
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>Solar Export Buy-Back Revenue</h2>
+            <h2>${this.t('solar_revenue_title')}</h2>
             <div class="metric-main saving" id="val-solar-revenue-main">฿${this._formatNum(d.solarRevenue)}</div>
             <div style="font-size: 13px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;">
-              Projected Month-End Revenue: <strong id="val-projected-solar-revenue">฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)</strong>
+              ${this.t('projected_month_end_revenue')} <strong id="val-projected-solar-revenue">฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)</strong>
             </div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Export Buy-Back Tariff Rate</span>
+                <span class="label">${this.t('export_buyback_rate')}</span>
                 <span class="val" id="val-sellback-rate-display">฿${d.sellbackRate} / kWh</span>
               </div>
               <div class="row">
-                <span class="label">Grid Export Volume</span>
+                <span class="label">${this.t('grid_export_vol')}</span>
                 <span class="val" id="val-grid-export-volume">${d.exportKwh} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Lifetime Grid Export Revenue</span>
+                <span class="label">${this.t('lifetime_grid_export_revenue')}</span>
                 <span class="val saving" id="val-lifetime-revenue">฿${this._formatNum(d.lifetimeSolarRevenue)}</span>
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>Solcast PV Forecast Integration</h2>
+            <h2>${this.t('solcast_title')}</h2>
             <div class="metric-main highlight" id="val-solcast-today-main" style="color: var(--warning-color, #ff9800);">${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span></div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Solcast Integration Status</span>
-                <span class="val ${d.solcastEntityFound ? 'saving' : ''}">${d.solcastEntityFound ? 'Solcast Integrated' : 'Simulated Solcast Baseline'}</span>
+                <span class="label">${this.t('solcast_status')}</span>
+                <span class="val ${d.solcastEntityFound ? 'saving' : ''}">${d.solcastEntityFound ? this.t('solcast_integrated') : this.t('solcast_simulated')}</span>
               </div>
               <div class="row">
-                <span class="label">Estimated Generation Today</span>
+                <span class="label">${this.t('estimated_gen_today')}</span>
                 <span class="val" id="val-solcast-today">${d.solcastForecastToday} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Estimated Remaining Today</span>
+                <span class="label">${this.t('estimated_rem_today')}</span>
                 <span class="val" id="val-solcast-remaining">${d.solcastForecastRemaining} kWh</span>
               </div>
               <div class="row">
-                <span class="label">Current Estimated Power Output</span>
+                <span class="label">${this.t('current_estimated_power')}</span>
                 <span class="val" id="val-solcast-power">${d.solcastPowerNow} ${d.solcastPowerNowUnit}</span>
               </div>
             </div>
@@ -1958,12 +2372,12 @@
 
           <!-- Full Width 30-Day Multi-Trend Solar SVG Line Chart -->
           <div class="card full-width">
-            <h2>Billing Month Solar Performance Trends</h2>
+            <h2>${this.t('solar_performance_trends')}</h2>
             <div class="chart-legend">
-              <div class="legend-item"><div class="legend-line-solcast"></div> 1. Solcast PV Forecast</div>
-              <div class="legend-item"><div class="legend-line-prod"></div> 2. Actual Solar Production</div>
-              <div class="legend-item"><div class="legend-line-self"></div> 3. Internal Self-Consumption</div>
-              <div class="legend-item"><div class="legend-line-export"></div> 4. Grid Export</div>
+              <div class="legend-item"><div class="legend-line-solcast"></div> ${this.t('legend_solcast_forecast')}</div>
+              <div class="legend-item"><div class="legend-line-prod"></div> ${this.t('legend_actual_solar_prod')}</div>
+              <div class="legend-item"><div class="legend-line-self"></div> ${this.t('legend_internal_self_consumption')}</div>
+              <div class="legend-item"><div class="legend-line-export"></div> ${this.t('legend_grid_export')}</div>
             </div>
 
             <div class="chart-wrapper">
@@ -2026,11 +2440,7 @@
             </div>
 
             <div class="note-box">
-              Full 30-day billing month multi-line performance chart trending:
-              <strong style="color: var(--warning-color, #ff9800);">Solcast PV Forecast</strong> &bull;
-              <strong style="color: var(--success-color, #4caf50);">Actual Solar Production</strong> &bull;
-              <strong style="color: var(--primary-color, #03a9f4);">Internal Self-Consumption</strong> &bull;
-              <strong style="color: var(--accent-color, #e91e63);">Grid Export</strong>.
+              ${this.t('note_solar_trends')}
             </div>
           </div>
         </div>
@@ -2040,61 +2450,61 @@
       ${this._activeTab === 'bess' ? `
         <div class="grid">
           <div class="card full-width">
-            <h2>BESS Interactive Calibration</h2>
+            <h2>${this.t('bess_calibration_title')}</h2>
             <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Simulated Battery Capacity (kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('simulated_battery_capacity')}</label>
                 <input type="number" id="input-bess-capacity" value="${d.bessCapacityKwh}" step="0.5" min="0.5" max="100.0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Battery CAPEX Capital Cost (THB)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('battery_capex_cost')}</label>
                 <input type="number" id="input-bess-capex" value="${d.bessCapexCost}" step="1000" min="0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div style="grid-column: 1 / -1;">
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Simulated Tariff Model</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('simulated_tariff_model')}</label>
                 <select id="input-bess-tariff-model" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none; cursor: pointer;">
-                  <option value="tou" ${d.bessTariffModel === 'tou' ? 'selected' : ''}>TOU Tariff 1.3.2 (Peak / Off-Peak)</option>
-                  <option value="normal" ${d.bessTariffModel === 'normal' ? 'selected' : ''}>Normal Tiered Tariff 1.2 (Flat/Marginal)</option>
+                  <option value="tou" ${d.bessTariffModel === 'tou' ? 'selected' : ''}>${this.t('tou_tariff_option')}</option>
+                  <option value="normal" ${d.bessTariffModel === 'normal' ? 'selected' : ''}>${this.t('tiered_tariff_option')}</option>
                 </select>
               </div>
               <div style="grid-column: 1 / -1; margin-top: 6px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer; user-select: none;">
-                  <input type="checkbox" id="input-bess-grid-charge" ${d.bessGridCharging ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" /> Enable Off-Peak Grid Charging (Smart TOU Arbitrage)
+                  <input type="checkbox" id="input-bess-grid-charge" ${d.bessGridCharging ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" /> ${this.t('enable_grid_charging')}
                 </label>
               </div>
             </div>
             <button class="action-btn" id="btn-save-bess" style="width: 100%; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; transition: background-color 0.2s;">
-              💾 Save & Recalculate Simulation
+              ${this.t('btn_save_bess')}
             </button>
           </div>
 
           <!-- Full Width BESS 12-Month simulation lookback -->
           <div class="card full-width" style="margin-top: 24px;">
-            <h2>12-Month Historical BESS Performance Simulation</h2>
+            <h2>${this.t('bess_lookback_title')}</h2>
             <p style="font-size: 14px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.5; margin-bottom: 20px;">
-              Verify battery savings over a full year using daily cycling simulations across your past 12 months of Home Assistant grid export recorder database history. This counts seasonal variations in solar generation and export surpluses.
+              ${this.t('bess_lookback_desc')}
             </p>
 
             ${!d.bess12MonthsData ? `
               <div style="text-align: center; padding: 30px 10px;">
                 <button class="action-btn" id="btn-trigger-bess-lookback" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background-color: var(--warning-color, #ff9800); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.2s;">
-                  ${this._isBessAnalyzing ? '🔄 Running daily battery cycling simulation over 365 days...' : '🔍 Calculate 12-Month BESS Performance History'}
+                  ${this._isBessAnalyzing ? this.t('btn_calc_bess_running') : this.t('btn_calc_bess')}
                 </button>
               </div>
             ` : `
               <div class="lookback-summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
                 <div class="summary-subcard" style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--divider-color, rgba(255,255,255,0.1)); padding: 16px; border-radius: 8px; text-align: center;">
-                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Annual Simulated Battery Savings</div>
+                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.t('annual_battery_savings')}</div>
                   <div style="font-size: 24px; font-weight: bold; color: var(--success-color, #4caf50);">฿${this._formatNum(d.bessLookbackTotalSavings)}</div>
                 </div>
                 <div class="summary-subcard" style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--divider-color, rgba(255,255,255,0.1)); padding: 16px; border-radius: 8px; text-align: center;">
-                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">12-Month Total Shifted Energy</div>
+                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.t('annual_shifted_energy')}</div>
                   <div style="font-size: 24px; font-weight: bold; color: var(--primary-color, #03a9f4);">${this._formatNum(d.bessLookbackTotalShifted)} kWh</div>
                 </div>
                 <div class="summary-subcard" style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--divider-color, rgba(255,255,255,0.1)); padding: 16px; border-radius: 8px; text-align: center;">
-                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Corrected Payback Period</div>
+                  <div style="font-size: 12px; color: #9e9e9e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.t('corrected_payback_period')}</div>
                   <div style="font-size: 24px; font-weight: bold; color: ${d.bessLookbackPaybackYears < 6.0 ? 'var(--success-color, #4caf50)' : (d.bessLookbackPaybackYears < 12.0 ? 'var(--warning-color, #ff9800)' : 'var(--error-color, #f44336)')};">
-                    ${d.bessLookbackPaybackYears === Infinity ? 'Infinite' : `${d.bessLookbackPaybackYears.toFixed(1)} Years`}
+                    ${d.bessLookbackPaybackYears === Infinity ? 'Infinite' : `${d.bessLookbackPaybackYears.toFixed(1)} ${this._lang === 'th' ? 'ปี' : 'Years'}`}
                   </div>
                 </div>
               </div>
@@ -2103,10 +2513,10 @@
                 <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
                   <thead>
                     <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
-                      <th style="padding: 12px 16px; font-weight: 600; color: #fff;">Month</th>
-                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">Grid Export Surplus (kWh)</th>
-                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">Simulated Shifted Energy (kWh)</th>
-                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">Calculated Savings (THB)</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff;">${this.t('col_month')}</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">${this.t('col_grid_export')}</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">${this.t('col_shifted_energy')}</th>
+                      <th style="padding: 12px 16px; font-weight: 600; color: #fff; text-align: right;">${this.t('col_savings')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2124,7 +2534,7 @@
 
               <div style="text-align: center; margin-top: 20px;">
                 <button class="action-btn" id="btn-trigger-bess-lookback" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px; background-color: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; outline: none; transition: background-color 0.2s;">
-                  ${this._isBessAnalyzing ? '🔄 Recalculating...' : '🔄 Run Simulation Again'}
+                  ${this._isBessAnalyzing ? '🔄 ...' : this.t('btn_run_again')}
                 </button>
               </div>
             `}
@@ -2136,26 +2546,26 @@
       ${this._activeTab === 'predictive' ? `
         <div class="grid">
           <div class="card full-width">
-            <h2>Tariff Switch Justification Engine</h2>
+            <h2>${this.t('tariff_optimizer_title')}</h2>
             <p style="font-size: 14px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.5; margin-bottom: 20px;">
-              To make an informed decision on whether to transition from Tiered Tariff 1.2 to TOU Tariff 1.3.2, you can run a lookback simulation over your past 12 months of Home Assistant recorder database history. This will show how seasonal temperature changes (e.g. summer air-conditioning loads vs winter) affect your monthly bills under both structures.
+              ${this.t('tariff_optimizer_desc')}
             </p>
 
             ${!d.lookbackData ? `
               <div style="text-align: center; padding: 40px 20px; border: 1px dashed var(--divider-color, rgba(255, 255, 255, 0.12)); border-radius: 8px;">
                 <div style="font-size: 15px; margin-bottom: 16px; color: var(--primary-text-color, #ffffff);">
-                  No lookback simulation has been run for this cycle yet.
+                  ${this.t('no_lookback_yet')}
                 </div>
                 <button class="action-btn" id="btn-trigger-lookback" style="background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px 24px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; outline: none; transition: background-color 0.2s;">
-                  ${this._isAnalyzing ? '⏳ Running Database Analysis...' : '🔍 Trigger 12-Month Lookback Analysis'}
+                  ${this._isAnalyzing ? this.t('btn_running_lookback') : this.t('btn_trigger_lookback')}
                 </button>
               </div>
             ` : `
               <!-- Lookback Simulation Results -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h3 style="margin: 0; font-size: 15px; font-weight: 500; color: #fff;">12-Month Simulation Cost Comparison (THB)</h3>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 500; color: #fff;">${this.t('simulation_cost_comparison')}</h3>
                 <button class="action-btn" id="btn-trigger-lookback" style="background-color: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 12px; font-size: 12px; cursor: pointer; outline: none;">
-                  ${this._isAnalyzing ? '⏳ Re-running...' : '🔄 Re-run Analysis'}
+                  ${this._isAnalyzing ? '⏳ ...' : this.t('btn_rerun_analysis')}
                 </button>
               </div>
 
@@ -2188,25 +2598,25 @@
               </div>
 
               <div class="chart-legend" style="margin-bottom: 24px;">
-                <div class="legend-item"><div class="legend-dot" style="background-color: #3b82f6;"></div> 1. Tiered Tariff 1.2 Cost</div>
-                <div class="legend-item"><div class="legend-dot" style="background-color: #0ea5e9;"></div> 2. TOU Tariff 1.3.2 Cost</div>
+                <div class="legend-item"><div class="legend-dot" style="background-color: #3b82f6;"></div> 1. ${this.t('col_tiered_bill')}</div>
+                <div class="legend-item"><div class="legend-dot" style="background-color: #0ea5e9;"></div> 2. ${this.t('col_tou_bill')}</div>
                 <div style="font-size: 11px; color: var(--secondary-text-color, #9e9e9e); margin-left: auto;">
-                  (Hover over bars to view detailed monthly savings)
+                  ${this.t('hover_deltas_hint')}
                 </div>
               </div>
 
               <!-- Detailed Historical Monthly Cost Table -->
-              <h3 style="margin-bottom: 12px; font-size: 15px; font-weight: 500; color: #fff;">Detailed Monthly Value Breakdown</h3>
+              <h3 style="margin-bottom: 12px; font-size: 15px; font-weight: 500; color: #fff;">${this.t('simulation_cost_comparison')}</h3>
               <div style="overflow-x: auto; background-color: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
                 <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; color: var(--primary-text-color, #fff);">
                   <thead>
                     <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Month</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_month')}</th>
                       <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Total Import</th>
                       <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Peak/Off-Peak split</th>
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Tiered 1.2 Cost</th>
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">TOU 1.3.2 Cost</th>
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Switch Benefit</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_tiered_bill')}</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_tou_bill')}</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_difference')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2232,7 +2642,7 @@
 
           <!-- Existing Tariff details cards -->
           <div class="card">
-            <h2>Phantom Tariff Optimizer</h2>
+            <h2>${this.t('tariff_optimizer_title')}</h2>
             <div class="metric-main ${diffClass}">${diffText}</div>
             <div class="table-rows">
               <div class="row">
@@ -2251,19 +2661,19 @@
           </div>
 
           <div class="card">
-            <h2>Tariff Transition Regulations</h2>
+            <h2>${this.t('tariff_regulations_title')}</h2>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Tariff 1.1 Free PSO Subsidy</span>
-                <span class="val">Free base charge if &le; 50 kWh/month</span>
+                <span class="label">${this.t('tariff_11_pso')}</span>
+                <span class="val">${this.t('tariff_11_pso_val')}</span>
               </div>
               <div class="row">
-                <span class="label">Tariff 1.1 Exceed Threshold</span>
-                <span class="val">&gt; 150 kWh/month for 3 consecutive months</span>
+                <span class="label">${this.t('tariff_11_threshold')}</span>
+                <span class="val">${this.t('tariff_11_threshold_val')}</span>
               </div>
               <div class="row">
-                <span class="label">Auto-Reclassification Engine</span>
-                <span class="val">Auto-switches calculation to Tariff 1.2</span>
+                <span class="label">${this.t('auto_reclass_engine')}</span>
+                <span class="val">${this.t('auto_reclass_engine_val')}</span>
               </div>
             </div>
           </div>
@@ -2274,11 +2684,11 @@
       ${this._activeTab === 'outages' ? `
         <div class="grid">
           <div class="card full-width">
-            <h2>Grid Outage & Reliability History</h2>
-            <div class="metric-main warning">${d.outageCount} <span style="font-size: 20px; font-weight: 500;">Incidents</span></div>
+            <h2>${this.t('outages_title')}</h2>
+            <div class="metric-main warning">${d.outageCount} <span style="font-size: 20px; font-weight: 500;">${this.t('incidents_label')}</span></div>
             <div class="table-rows" style="margin-bottom: 20px;">
               <div class="row">
-                <span class="label">Total Cumulative Downtime</span>
+                <span class="label">${this.t('total_cumulative_downtime')}</span>
                 <span class="val warning">${(() => {
                   const totalSec = d.totalOutageSeconds || 0;
                   const mins = Math.floor(totalSec / 60);
@@ -2291,15 +2701,15 @@
               </div>
             </div>
 
-            <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 15px; font-weight: 500; color: #fff;">Outage Log Book</h3>
+            <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 15px; font-weight: 500; color: #fff;">${this.t('outage_log_book')}</h3>
             ${d.outageHistory && d.outageHistory.length > 0 ? `
               <div style="overflow-x: auto; background-color: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
                 <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; color: var(--primary-text-color, #fff);">
                   <thead>
                     <tr style="background-color: rgba(255,255,255,0.04); border-bottom: 1px solid var(--divider-color, rgba(255,255,255,0.12));">
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Start Time</th>
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">End Time</th>
-                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">Duration</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_start_time')}</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_end_time')}</th>
+                      <th style="padding: 10px 14px; font-weight: 600; color: #9e9e9e;">${this.t('col_duration')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2315,7 +2725,7 @@
               </div>
             ` : `
               <div style="text-align: center; padding: 20px; color: #9e9e9e; font-size: 13px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
-                No outages recorded in the log book yet.
+                ${this.t('no_outages_recorded')}
               </div>
             `}
           </div>
@@ -2326,35 +2736,35 @@
       ${this._activeTab === 'settings' ? `
         <div class="grid">
           <div class="card">
-            <h2>Grid & Solar Sensors Configuration</h2>
+            <h2>${this.t('settings_sensors_title')}</h2>
             <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Grid Energy Import Sensor ID</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_import_sensor')}</label>
                 <input type="text" id="setting-grid-import" value="${d.importSensorId}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Grid Energy Export Sensor ID (Optional)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_export_sensor')}</label>
                 <input type="text" id="setting-grid-export" value="${d.exportSensorId}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Solar Yield Production Sensor ID</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_solar_sensor')}</label>
                 <input type="text" id="setting-solar-prod" value="${d.solarSensorId}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>Utility & Tariff Structure</h2>
+            <h2>${this.t('settings_utility_title')}</h2>
             <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Electricity Provider</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_provider')}</label>
                 <select id="setting-utility-provider" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none; cursor: pointer;">
                   <option value="MEA" ${d.provider === 'MEA' ? 'selected' : ''}>MEA (Metropolitan Electricity Authority)</option>
                   <option value="PEA" ${d.provider === 'PEA' ? 'selected' : ''}>PEA (Provincial Electricity Authority)</option>
                 </select>
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tariff Classification Category</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_tariff_category')}</label>
                 <select id="setting-tariff-category" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none; cursor: pointer;">
                   <option value="1.1" ${d.tariffCategory === '1.1' ? 'selected' : ''}>Tariff 1.1 (Progressive &le; 150 kWh)</option>
                   <option value="1.2" ${d.tariffCategory === '1.2' ? 'selected' : ''}>Tariff 1.2 (Progressive &gt; 150 kWh)</option>
@@ -2363,57 +2773,57 @@
                 </select>
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Billing Cycle Start Day</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_billing_day')}</label>
                 <input type="number" id="setting-billing-day" value="${d.billingDay}" min="1" max="31" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
             </div>
           </div>
 
           <div class="card">
-            <h2>Financial & Subscription Options</h2>
+            <h2>${this.t('settings_financial_title')}</h2>
             <div class="table-rows" style="gap: 16px; margin-bottom: 20px;">
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Ft Charge rate (THB / kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_ft_rate')}</label>
                 <input type="number" id="setting-ft-rate" value="${d.ftRate}" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Solar Buy-back sellback rate (THB / kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_sellback_rate')}</label>
                 <input type="number" id="setting-sellback-rate" value="${d.sellbackRate}" step="0.01" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer;">
-                  <input type="checkbox" id="setting-mea-ebill" ${d.meaEbillActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> Active MEA e-Bill
+                  <input type="checkbox" id="setting-mea-ebill" ${d.meaEbillActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> ${this.t('setting_ebill')}
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer;">
-                  <input type="checkbox" id="setting-mea-epayment" ${d.meaEpaymentActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> Active MEA e-Payment
+                  <input type="checkbox" id="setting-mea-epayment" ${d.meaEpaymentActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> ${this.t('setting_epayment')}
                 </label>
               </div>
             </div>
           </div>
           <div class="card full-width" style="margin-top: 10px;">
-            <h2>Custom Base Energy Rate Overrides (Optional)</h2>
+            <h2>${this.t('settings_custom_rates_title')}</h2>
             <p style="font-size: 13px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.4; margin-bottom: 16px;">
-              Manually override statutory MEA/PEA base tariff rates (THB/kWh). Leave any field blank to automatically use official standard utility tariff schedules.
+              ${this.t('settings_custom_rates_desc')}
             </p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">TOU Peak Rate (THB/kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_tou_peak_rate')}</label>
                 <input type="number" id="setting-custom-peak-rate" value="${d.customPeakRate}" placeholder="Default: 5.7982" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">TOU Off-Peak Rate (THB/kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_tou_offpeak_rate')}</label>
                 <input type="number" id="setting-custom-offpeak-rate" value="${d.customOffpeakRate}" placeholder="Default: 2.6369" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tier 1 Rate (0-150 kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_tier1_rate')}</label>
                 <input type="number" id="setting-custom-tier1-rate" value="${d.customTier1Rate}" placeholder="Default: 3.2484" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tier 2 Rate (151-400 kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_tier2_rate')}</label>
                 <input type="number" id="setting-custom-tier2-rate" value="${d.customTier2Rate}" placeholder="Default: 4.2233" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
               <div>
-                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">Tier 3 / Flat Rate (>400 kWh)</label>
+                <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_tier3_rate')}</label>
                 <input type="number" id="setting-custom-tier3-rate" value="${d.customTier3Rate}" placeholder="Default: 4.4217" step="0.0001" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
             </div>
@@ -2421,14 +2831,14 @@
 
           <div class="card full-width" style="text-align: right; padding-top: 10px; border: none; background-color: transparent;">
             <button class="action-btn" id="btn-save-settings" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background-color: var(--success-color, #4caf50); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.2s;">
-              💾 Save Configuration & Reload Integration
+              ${this.t('btn_save_settings')}
             </button>
           </div>
         </div>
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.4 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.5 &bull; Home Assistant Custom Integration
       </div>
     `;
 
