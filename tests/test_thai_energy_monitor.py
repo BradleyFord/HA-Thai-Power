@@ -244,6 +244,38 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         # Verify total sum matches monthly baseline within rounding precision
         self.assertAlmostEqual(sum(daily_series), total_monthly_kwh, places=1)
 
+    def test_projected_monthly_solar_calculations(self) -> None:
+        """Test continuous fractional run-rate projections for solar generation and financial savings."""
+        elapsed_days_fraction = 15.0  # Exactly halfway through 30-day billing cycle
+        monthly_solar_kwh = 250.0
+        monthly_export_kwh = 50.0
+        monthly_solar_savings_thb = 850.0
+        sellback_rate = 2.20
+
+        # Projected volume calculations
+        projected_monthly_solar_kwh = (monthly_solar_kwh / elapsed_days_fraction) * 30.0
+        projected_monthly_export_kwh = (monthly_export_kwh / elapsed_days_fraction) * 30.0
+        projected_monthly_self_consumption_kwh = max(
+            0.0, projected_monthly_solar_kwh - projected_monthly_export_kwh
+        )
+
+        self.assertAlmostEqual(projected_monthly_solar_kwh, 500.0, places=2)
+        self.assertAlmostEqual(projected_monthly_export_kwh, 100.0, places=2)
+        self.assertAlmostEqual(projected_monthly_self_consumption_kwh, 400.0, places=2)
+
+        # Projected financial calculations
+        projected_monthly_solar_savings_thb = (
+            monthly_solar_savings_thb / elapsed_days_fraction
+        ) * 30.0
+        projected_monthly_solar_revenue_thb = projected_monthly_export_kwh * sellback_rate
+        projected_monthly_total_solar_benefit_thb = (
+            projected_monthly_solar_savings_thb + projected_monthly_solar_revenue_thb
+        )
+
+        self.assertAlmostEqual(projected_monthly_solar_savings_thb, 1700.0, places=2)
+        self.assertAlmostEqual(projected_monthly_solar_revenue_thb, 220.0, places=2)
+        self.assertAlmostEqual(projected_monthly_total_solar_benefit_thb, 1920.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

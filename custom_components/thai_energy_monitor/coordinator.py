@@ -1335,6 +1335,58 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
 
+        # 3. Project 30-day monthly solar generation, export, savings, and bill without solar
+        projected_monthly_solar_kwh = (self.monthly_solar_kwh / elapsed_days_fraction) * 30.0
+        projected_monthly_export_kwh = (self.monthly_export_kwh / elapsed_days_fraction) * 30.0
+        projected_monthly_self_consumption_kwh = max(
+            0.0, projected_monthly_solar_kwh - projected_monthly_export_kwh
+        )
+
+        projected_monthly_solar_savings_thb = (
+            self.monthly_solar_savings_thb / elapsed_days_fraction
+        ) * 30.0
+        projected_monthly_solar_revenue_thb = (
+            projected_monthly_export_kwh * sellback_rate
+        )
+        projected_monthly_total_solar_benefit_thb = (
+            projected_monthly_solar_savings_thb + projected_monthly_solar_revenue_thb
+        )
+
+        # Gross projected consumption without solar offset = grid import + self-consumed solar
+        gross_projected_consumption = (
+            projected_monthly_import + projected_monthly_self_consumption_kwh
+        )
+        gross_ft_charge = gross_projected_consumption * ft_rate
+        gross_base_cost = 0.0
+
+        if category == TARIFF_1_1:
+            if gross_projected_consumption <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
+                gross_base_cost = 0.0
+            else:
+                gross_base_cost = self.calculate_tiered_cost(
+                    gross_projected_consumption, TARIFF_1_1_TIERS
+                )
+        elif category == TARIFF_1_2:
+            gross_base_cost = self.calculate_tiered_cost(
+                gross_projected_consumption, self.active_tiered_1_2_tiers
+            )
+        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            # Without solar, daytime load is imported from grid (40% peak, 60% off-peak)
+            gross_peak_ratio = 0.40
+            gross_offpeak_ratio = 0.60
+            gross_base_cost = (
+                (gross_projected_consumption * gross_peak_ratio) * self.active_tou_peak_rate
+            ) + (
+                (gross_projected_consumption * gross_offpeak_ratio) * self.active_tou_offpeak_rate
+            )
+
+        gross_subtotal = gross_base_cost + service_charge + gross_ft_charge
+        projected_bill_without_solar_thb = gross_subtotal * (1.0 + VAT_RATE)
+        saved_bill_amount = max(0.0, projected_bill_without_solar_thb - monthly_estimated_bill)
+        projected_solar_bill_reduction_pct = (
+            (saved_bill_amount / max(1.0, projected_bill_without_solar_thb)) * 100.0
+        )
+
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
         outage_hours = self.total_outage_seconds / 3600.0
         economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
@@ -1533,6 +1585,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "monthly_solar_savings_thb": round(self.monthly_solar_savings_thb, 2),
             "monthly_solar_revenue_thb": round(monthly_solar_revenue_thb, 2),
             "monthly_total_solar_benefit_thb": round(monthly_total_solar_benefit_thb, 2),
+
+            # Projected Month-End Solar Metrics
+            "projected_monthly_solar_kwh": round(projected_monthly_solar_kwh, 3),
+            "projected_monthly_export_kwh": round(projected_monthly_export_kwh, 3),
+            "projected_monthly_self_consumption_kwh": round(projected_monthly_self_consumption_kwh, 3),
+            "projected_monthly_solar_savings_thb": round(projected_monthly_solar_savings_thb, 2),
+            "projected_monthly_solar_revenue_thb": round(projected_monthly_solar_revenue_thb, 2),
+            "projected_monthly_total_solar_benefit_thb": round(projected_monthly_total_solar_benefit_thb, 2),
+            "projected_bill_without_solar_thb": round(projected_bill_without_solar_thb, 2),
+            "projected_solar_bill_reduction_pct": round(projected_solar_bill_reduction_pct, 1),
 
             # Today Calendar Day Live Entities
             "today_import_kwh": round(self.today_import_kwh, 3),

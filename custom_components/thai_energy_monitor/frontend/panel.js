@@ -189,6 +189,15 @@
     const serviceCharge = getEntityState('sensor.monthly_fixed_service_charge') || getEntityState('sensor.monthly_service_charge') || getAttribute(billEntityId, 'monthly_service_charge') || '38.22';
     const vatAmount = getEntityState('sensor.monthly_calculated_vat_7') || getEntityState('sensor.monthly_vat_amount') || getAttribute(billEntityId, 'monthly_vat_amount') || '0.00';
 
+    const projectedSolarKwh = getAttribute(billEntityId, 'projected_monthly_solar_kwh') || '0.00';
+    const projectedExportKwh = getAttribute(billEntityId, 'projected_monthly_export_kwh') || '0.00';
+    const projectedSelfConsumptionKwh = getAttribute(billEntityId, 'projected_monthly_self_consumption_kwh') || '0.00';
+    const projectedSolarSavings = getAttribute(billEntityId, 'projected_monthly_solar_savings_thb') || '0.00';
+    const projectedSolarRevenue = getAttribute(billEntityId, 'projected_monthly_solar_revenue_thb') || '0.00';
+    const projectedTotalSolarBenefit = getAttribute(billEntityId, 'projected_monthly_total_solar_benefit_thb') || '0.00';
+    const projectedBillWithoutSolar = getAttribute(billEntityId, 'projected_bill_without_solar_thb') || '0.00';
+    const projectedSolarReductionPct = getAttribute(billEntityId, 'projected_solar_bill_reduction_pct') || '0.0';
+
     const solarKwhNum = parseFloat(solarKwh) || 0;
     const exportKwhNum = parseFloat(exportKwh) || 0;
     const selfConsumedKwh = Math.max(0, solarKwhNum - exportKwhNum);
@@ -501,6 +510,14 @@
       solarSavings: getEntityState('sensor.monthly_solar_savings'),
       solarRevenue: getEntityState('sensor.monthly_solar_export_revenue'),
       totalSolarBenefit: getEntityState('sensor.monthly_total_solar_benefit'),
+      projectedSolarKwh: projectedSolarKwh,
+      projectedExportKwh: projectedExportKwh,
+      projectedSelfConsumptionKwh: projectedSelfConsumptionKwh,
+      projectedSolarSavings: projectedSolarSavings,
+      projectedSolarRevenue: projectedSolarRevenue,
+      projectedTotalSolarBenefit: projectedTotalSolarBenefit,
+      projectedBillWithoutSolar: projectedBillWithoutSolar,
+      projectedSolarReductionPct: projectedSolarReductionPct,
       lifetimeBenefit: getEntityState('sensor.lifetime_total_solar_benefit'),
       lifetimeSolarSavings: getEntityState('sensor.lifetime_solar_savings') || getAttribute(billEntityId, 'lifetime_solar_savings_thb') || '0.00',
       lifetimeSolarRevenue: getEntityState('sensor.lifetime_solar_revenue') || getAttribute(billEntityId, 'lifetime_solar_revenue_thb') || '0.00',
@@ -1002,6 +1019,10 @@
 
     // Dynamic updates for Solar Cards
     setText('val-solar-volume', `${d.solarKwh} kWh`);
+    setText('val-projected-solar-volume', `${this._formatNum(d.projectedSolarKwh)} kWh`);
+    setText('val-projected-solar-savings', `฿${this._formatNum(d.projectedSolarSavings)} (${this._formatNum(d.projectedSelfConsumptionKwh)} kWh)`);
+    setText('val-projected-solar-revenue', `฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)`);
+    setHtml('val-projected-solar-benefit-line', `Projected Solar Offset: <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% reduction vs ฿${this._formatNum(d.projectedBillWithoutSolar)} bill without solar)`);
     setText('val-self-consumed-volume', `${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)`);
     setText('val-grid-export-volume', `${d.exportKwh} kWh`);
     setText('val-lifetime-savings', `฿${this._formatNum(d.lifetimeSolarSavings)}`);
@@ -1653,8 +1674,11 @@
           <div class="card">
             <h2>Current Accrued Bill (To Date) <span>(THB)</span></h2>
             <div class="metric-main" id="val-accrued-bill">฿${this._formatNum(d.accruedBill)}</div>
-            <div style="font-size: 13px; color: var(--primary-color, #03a9f4); margin-bottom: 12px; font-weight: 500;">
+            <div style="font-size: 13px; color: var(--primary-color, #03a9f4); margin-bottom: 4px; font-weight: 500;">
               Projected Month-End: <strong>฿${this._formatNum(d.totalBill)}</strong> (${this._formatNum(d.projectedImport)} kWh run-rate)
+            </div>
+            <div style="font-size: 12px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;" id="val-projected-solar-benefit-line">
+              Projected Solar Offset: <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% reduction vs ฿${this._formatNum(d.projectedBillWithoutSolar)} bill without solar)
             </div>
             <div class="table-rows">
               <div class="row">
@@ -1855,10 +1879,17 @@
           <div class="card">
             <h2>Solar Self-Consumption Savings</h2>
             <div class="metric-main saving" id="val-solar-savings-main">฿${this._formatNum(d.solarSavings)}</div>
+            <div style="font-size: 13px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;">
+              Projected Month-End Savings: <strong id="val-projected-solar-savings">฿${this._formatNum(d.projectedSolarSavings)} (${this._formatNum(d.projectedSelfConsumptionKwh)} kWh)</strong>
+            </div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Total Solar Production Volume</span>
                 <span class="val" id="val-solar-volume">${d.solarKwh} kWh</span>
+              </div>
+              <div class="row">
+                <span class="label">Projected Full Month Yield</span>
+                <span class="val saving" id="val-projected-solar-volume">${this._formatNum(d.projectedSolarKwh)} kWh</span>
               </div>
               <div class="row">
                 <span class="label">Self-Consumed Volume</span>
@@ -1874,6 +1905,9 @@
           <div class="card">
             <h2>Solar Export Buy-Back Revenue</h2>
             <div class="metric-main saving" id="val-solar-revenue-main">฿${this._formatNum(d.solarRevenue)}</div>
+            <div style="font-size: 13px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;">
+              Projected Month-End Revenue: <strong id="val-projected-solar-revenue">฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)</strong>
+            </div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">Export Buy-Back Tariff Rate</span>
@@ -2385,7 +2419,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.2 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.3 &bull; Home Assistant Custom Integration
       </div>
     `;
 
