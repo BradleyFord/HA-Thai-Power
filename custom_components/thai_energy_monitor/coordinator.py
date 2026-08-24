@@ -154,6 +154,15 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.monthly_tou_offpeak_import_kwh: float = 0.0
         self.monthly_solar_savings_thb: float = 0.0
 
+        # Today Calendar Day Baselines & Live Monotonic Accumulators
+        self.today_import_baseline_kwh: float | None = None
+        self.today_solar_baseline_kwh: float | None = None
+        self.today_export_baseline_kwh: float | None = None
+        self.today_import_kwh: float = 0.0
+        self.today_solar_kwh: float = 0.0
+        self.today_export_kwh: float = 0.0
+        self.last_midnight_date: datetime.date | None = None
+
         # Last Month Archived Summary Stats
         self.last_month_bill_thb: float = 0.0
         self.last_month_import_kwh: float = 0.0
@@ -210,6 +219,29 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if data.get("monthly_export_kwh", 0) > self.monthly_export_kwh:
                         self.monthly_export_kwh = float(data["monthly_export_kwh"])
 
+                # Restore today's live baselines if stored record is from today
+                bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+                try:
+                    today_str = now.astimezone(bkk_tz).date().isoformat()
+                except Exception:
+                    today_str = now.date().isoformat()
+                stored_today_str = data.get("today_date")
+
+                if stored_today_str == today_str:
+                    if self.today_import_baseline_kwh is None and data.get("today_import_baseline_kwh") is not None:
+                        self.today_import_baseline_kwh = float(data["today_import_baseline_kwh"])
+                    if self.today_solar_baseline_kwh is None and data.get("today_solar_baseline_kwh") is not None:
+                        self.today_solar_baseline_kwh = float(data["today_solar_baseline_kwh"])
+                    if self.today_export_baseline_kwh is None and data.get("today_export_baseline_kwh") is not None:
+                        self.today_export_baseline_kwh = float(data["today_export_baseline_kwh"])
+
+                    if data.get("today_import_kwh", 0) > self.today_import_kwh:
+                        self.today_import_kwh = float(data["today_import_kwh"])
+                    if data.get("today_solar_kwh", 0) > self.today_solar_kwh:
+                        self.today_solar_kwh = float(data["today_solar_kwh"])
+                    if data.get("today_export_kwh", 0) > self.today_export_kwh:
+                        self.today_export_kwh = float(data["today_export_kwh"])
+
                 # Always restore lifetime accumulators and archived prior stats
                 if data.get("lifetime_solar_savings_thb", 0) > self.lifetime_solar_savings_thb:
                     self.lifetime_solar_savings_thb = float(data["lifetime_solar_savings_thb"])
@@ -230,11 +262,24 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Save billing baselines and accumulators to Home Assistant storage."""
         try:
             now = dt_util.now()
+            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+            try:
+                today_str = now.astimezone(bkk_tz).date().isoformat()
+            except Exception:
+                today_str = now.date().isoformat()
+
             data = {
                 "billing_start_datetime": self._get_billing_start_datetime(now).isoformat(),
+                "today_date": today_str,
                 "import_baseline_kwh": self.import_baseline_kwh,
                 "solar_baseline_kwh": self.solar_baseline_kwh,
                 "export_baseline_kwh": self.export_baseline_kwh,
+                "today_import_baseline_kwh": self.today_import_baseline_kwh,
+                "today_solar_baseline_kwh": self.today_solar_baseline_kwh,
+                "today_export_baseline_kwh": self.today_export_baseline_kwh,
+                "today_import_kwh": self.today_import_kwh,
+                "today_solar_kwh": self.today_solar_kwh,
+                "today_export_kwh": self.today_export_kwh,
                 "monthly_import_kwh": self.monthly_import_kwh,
                 "monthly_solar_kwh": self.monthly_solar_kwh,
                 "monthly_export_kwh": self.monthly_export_kwh,
@@ -580,6 +625,43 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.phantom_tou_offpeak_kwh = 0.0
             self.last_reset_date = today
 
+    def _get_today_start_datetime(self, now: datetime) -> datetime:
+        """Return datetime representing start of the current calendar day in Bangkok time."""
+        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+        try:
+            bkk_now = now.astimezone(bkk_tz)
+        except Exception:
+            bkk_now = now
+        return datetime(bkk_now.year, bkk_now.month, bkk_now.day, 0, 0, 0, tzinfo=bkk_tz)
+
+    def _check_midnight_reset(
+        self,
+        now: datetime,
+        curr_import: float,
+        curr_solar: float,
+        curr_export: float
+    ) -> None:
+        """Check for daily midnight transition and reset today live accumulators."""
+        try:
+            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
+            today = now.astimezone(bkk_tz).date()
+        except Exception:
+            today = now.date()
+
+        if self.last_midnight_date is None:
+            self.last_midnight_date = today
+            return
+
+        if today != self.last_midnight_date:
+            _LOGGER.info("Executing daily midnight reset for Bangkok date %s", today)
+            self.today_import_baseline_kwh = curr_import if curr_import > 0.0 else None
+            self.today_solar_baseline_kwh = curr_solar if curr_solar > 0.0 else None
+            self.today_export_baseline_kwh = curr_export if curr_export > 0.0 else None
+            self.today_import_kwh = 0.0
+            self.today_solar_kwh = 0.0
+            self.today_export_kwh = 0.0
+            self.last_midnight_date = today
+
     def get_billing_cycle_day(self, now_dt: datetime) -> int:
         """Calculate the current day of the monthly billing cycle (1-30)."""
         try:
@@ -690,14 +772,30 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 return max(0.0, benefit - charge_cost)
 
-    async def _async_fetch_recorder_history(self, now: datetime) -> dict[str, list[float]]:
+    async def _async_fetch_recorder_history(
+        self,
+        now: datetime,
+        today_import_live: float,
+        today_solar_live: float,
+        today_export_live: float
+    ) -> dict[str, list[float]]:
         """Query actual daily states directly from Home Assistant recorder database for source sensors."""
+        current_day = max(1, self.get_billing_cycle_day(now))
+        today_idx = current_day - 1
+
         if (
             self._last_recorder_fetch_time is not None
             and self._cached_recorder_history is not None
             and (now - self._last_recorder_fetch_time).total_seconds() < 900
             and self.monthly_import_kwh > 0.0
         ):
+            # Dynamically update today's live slot on every poll even when past LTS history is cached
+            if 0 <= today_idx < 30:
+                self._cached_recorder_history["daily_import_kwh_history"][today_idx] = round(today_import_live, 3)
+                self._cached_recorder_history["daily_solar_kwh_history"][today_idx] = round(today_solar_live, 3)
+                self._cached_recorder_history["daily_export_kwh_history"][today_idx] = round(
+                    min(today_export_live, today_solar_live), 3
+                )
             return self._cached_recorder_history
 
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
@@ -706,7 +804,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:
             bkk_now = now
 
-        current_day = max(1, self.get_billing_cycle_day(now))
         start_dt = self._get_billing_start_datetime(now)
         end_dt = now
 
@@ -737,7 +834,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.debug("Executor error fetching LTS daily stats: %s", err)
 
-        def extract_daily_series(entity_id: str, curr_sensor_val: float, total_monthly: float) -> list[float]:
+        def extract_daily_series(entity_id: str, today_live_val: float, total_monthly: float) -> list[float]:
             avg_run_rate = total_monthly / elapsed_days_fraction if elapsed_days_fraction > 0 else 0.0
             entity_stats = stats_dict.get(entity_id, []) if stats_dict else []
 
@@ -772,19 +869,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     daily_values.append(-1.0)
                     missing_indices.append(idx)
 
-            # If any past day was missing from LTS, allocate remaining proportionally without exceeding monthly total
+            # Reconcile completed past days with exact target past total (total_monthly - today_live_val)
+            target_past_total = max(0.0, total_monthly - today_live_val)
             known_past_sum = sum(v for v in daily_values if v >= 0.0)
-            remaining_for_missing = max(0.0, total_monthly - known_past_sum)
-            num_slots = len(missing_indices) + 1  # missing past days + today
-            fallback_val = remaining_for_missing / num_slots if num_slots > 0 else 0.0
 
-            for idx in missing_indices:
-                daily_values[idx] = round(fallback_val, 3)
+            if missing_indices:
+                remaining_for_missing = max(0.0, target_past_total - known_past_sum)
+                fallback_val = remaining_for_missing / len(missing_indices)
+                for idx in missing_indices:
+                    daily_values[idx] = round(fallback_val, 3)
+            elif known_past_sum > 0.0 and abs(known_past_sum - target_past_total) > 0.01:
+                scale_factor = target_past_total / known_past_sum
+                for idx in range(len(daily_values)):
+                    daily_values[idx] = round(daily_values[idx] * scale_factor, 3)
 
-            # For today (Day current_day): live accumulation up to right now
-            past_sum = sum(daily_values)
-            today_delta = max(0.0, total_monthly - past_sum)
-            daily_values.append(round(today_delta, 3))
+            # For today (Day current_day): live accumulation directly from midnight baseline
+            daily_values.append(round(today_live_val, 3))
 
             # For future days in billing cycle: project average daily run-rate
             for idx in range(current_day, 30):
@@ -792,9 +892,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             return daily_values
 
-        daily_import = extract_daily_series(self.import_sensor_id, self._last_import_val or self.monthly_import_kwh, self.monthly_import_kwh)
-        daily_solar = extract_daily_series(self.solar_sensor_id, self._last_solar_val or self.monthly_solar_kwh, self.monthly_solar_kwh)
-        daily_export = extract_daily_series(self.export_sensor_id, self._last_export_val or self.monthly_export_kwh, self.monthly_export_kwh)
+        daily_import = extract_daily_series(self.import_sensor_id, today_import_live, self.monthly_import_kwh)
+        daily_solar = extract_daily_series(self.solar_sensor_id, today_solar_live, self.monthly_solar_kwh)
+        daily_export = extract_daily_series(self.export_sensor_id, today_export_live, self.monthly_export_kwh)
 
         # Guarantee self-consumption doesn't exceed production
         for idx in range(30):
@@ -954,13 +1054,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         current_day = self.get_billing_cycle_day(now)
         await self._async_populate_last_month_stats(now)
+        self._check_midnight_reset(now, curr_import, curr_solar, curr_export)
 
         # --- RIEMANN INTEGRATION ENGINE FOR POWER SENSORS (kW/W) ---
         is_import_power = self._is_power_sensor(self.import_sensor_id, import_state)
         is_solar_power = self._is_power_sensor(self.solar_sensor_id, solar_state)
         is_export_power = self._is_power_sensor(self.export_sensor_id, export_state)
 
-        # Import Riemann Sum Integration
+        today_start_dt = self._get_today_start_datetime(now)
+
+        # Import Riemann Sum Integration or Baseline Subtraction
         if is_import_power:
             if self._last_import_time is not None:
                 elapsed = (now - self._last_import_time).total_seconds()
@@ -971,6 +1074,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     power_kw = (power_w / 1000.0) if unit == "W" else power_w
                     delta_kwh = (power_kw * elapsed) / 3600.0
                     self.monthly_import_kwh += delta_kwh
+                    self.today_import_kwh += delta_kwh
                     self.lifetime_import_kwh += delta_kwh
             self._last_import_time = now
             self._last_import_power_val = curr_import
@@ -997,7 +1101,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 self.monthly_import_kwh = 0.0
 
-        # Solar Riemann Sum Integration
+            # Today Direct Baseline Subtraction
+            if self.today_import_baseline_kwh is None and curr_import > 0.0:
+                fetched_today_import = await self._async_get_sensor_baseline(self.import_sensor_id, today_start_dt)
+                if fetched_today_import is not None and 0.0 < fetched_today_import <= curr_import:
+                    self.today_import_baseline_kwh = fetched_today_import
+                elif current_cycle_day == 1 and self.import_baseline_kwh is not None:
+                    self.today_import_baseline_kwh = self.import_baseline_kwh
+                else:
+                    self.today_import_baseline_kwh = curr_import
+
+            if curr_import >= (self.today_import_baseline_kwh or 0.0) and (self.today_import_baseline_kwh or 0.0) > 0.0:
+                self.today_import_kwh = curr_import - (self.today_import_baseline_kwh or 0.0)
+            else:
+                self.today_import_kwh = 0.0
+
+        # Solar Riemann Sum Integration or Baseline Subtraction
         if is_solar_power:
             if self._last_solar_time is not None:
                 elapsed = (now - self._last_solar_time).total_seconds()
@@ -1007,6 +1126,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     power_kw = (power_w / 1000.0) if unit == "W" else power_w
                     delta_kwh = (power_kw * elapsed) / 3600.0
                     self.monthly_solar_kwh += delta_kwh
+                    self.today_solar_kwh += delta_kwh
                     self.lifetime_solar_kwh += delta_kwh
             self._last_solar_time = now
             self._last_solar_power_val = curr_solar
@@ -1033,7 +1153,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 self.monthly_solar_kwh = 0.0
 
-        # Export Riemann Sum Integration
+            # Today Direct Baseline Subtraction
+            if self.today_solar_baseline_kwh is None and curr_solar > 0.0:
+                fetched_today_solar = await self._async_get_sensor_baseline(self.solar_sensor_id, today_start_dt)
+                if fetched_today_solar is not None and 0.0 < fetched_today_solar <= curr_solar:
+                    self.today_solar_baseline_kwh = fetched_today_solar
+                elif current_cycle_day == 1 and self.solar_baseline_kwh is not None:
+                    self.today_solar_baseline_kwh = self.solar_baseline_kwh
+                else:
+                    self.today_solar_baseline_kwh = curr_solar
+
+            if curr_solar >= (self.today_solar_baseline_kwh or 0.0) and (self.today_solar_baseline_kwh or 0.0) > 0.0:
+                self.today_solar_kwh = curr_solar - (self.today_solar_baseline_kwh or 0.0)
+            else:
+                self.today_solar_kwh = 0.0
+
+        # Export Riemann Sum Integration or Baseline Subtraction
         if is_export_power:
             if self._last_export_time is not None:
                 elapsed = (now - self._last_export_time).total_seconds()
@@ -1043,6 +1178,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     power_kw = (power_w / 1000.0) if unit == "W" else power_w
                     delta_kwh = (power_kw * elapsed) / 3600.0
                     self.monthly_export_kwh += delta_kwh
+                    self.today_export_kwh += delta_kwh
                     self.lifetime_export_kwh += delta_kwh
             self._last_export_time = now
             self._last_export_power_val = curr_export
@@ -1068,6 +1204,21 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 pass
             else:
                 self.monthly_export_kwh = 0.0
+
+            # Today Direct Baseline Subtraction
+            if self.today_export_baseline_kwh is None and curr_export > 0.0:
+                fetched_today_export = await self._async_get_sensor_baseline(self.export_sensor_id, today_start_dt)
+                if fetched_today_export is not None and 0.0 < fetched_today_export <= curr_export:
+                    self.today_export_baseline_kwh = fetched_today_export
+                elif current_cycle_day == 1 and self.export_baseline_kwh is not None:
+                    self.today_export_baseline_kwh = self.export_baseline_kwh
+                else:
+                    self.today_export_baseline_kwh = curr_export
+
+            if curr_export >= (self.today_export_baseline_kwh or 0.0) and (self.today_export_baseline_kwh or 0.0) > 0.0:
+                self.today_export_kwh = curr_export - (self.today_export_baseline_kwh or 0.0)
+            else:
+                self.today_export_kwh = 0.0
 
         if not is_import_power:
             self.lifetime_import_kwh = curr_import
@@ -1188,8 +1339,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         outage_hours = self.total_outage_seconds / 3600.0
         economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
 
-        # Fetch 30-day historical daily arrays from Python engine
-        recorder_history = await self._async_fetch_recorder_history(now)
+        # Fetch 30-day historical daily arrays from Python engine with live today values
+        recorder_history = await self._async_fetch_recorder_history(
+            now,
+            self.today_import_kwh,
+            self.today_solar_kwh,
+            self.today_export_kwh
+        )
 
         # Real-time BESS battery shifting simulation
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
@@ -1226,7 +1382,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Calculate past days solar self-consumption savings in 2 passes (Peak / Off-Peak)
         total_solar_savings_thb = 0.0
-        past_self_consumption_sum = 0.0
         curr_day_val = max(1, current_day)
         
         daily_solar_history = recorder_history.get("daily_solar_kwh_history", [])
@@ -1246,8 +1401,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     exp_kwh = self.monthly_export_kwh / curr_day_val
                 
                 day_self = max(0.0, sol_kwh - exp_kwh)
-                past_self_consumption_sum += day_self
-                
                 day_date = (start_dt + timedelta(days=idx)).date()
                 is_weekday = day_date.weekday() < 5
                 
@@ -1265,10 +1418,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 
                 total_solar_savings_thb += day_savings
 
-        # Add today's incremental self-consumption savings (today is day_num = current_day)
-        today_total_self = max(0.0, self.monthly_solar_kwh - self.monthly_export_kwh)
-        today_incremental_self = max(0.0, today_total_self - past_self_consumption_sum)
-        
+        # Add today's incremental self-consumption savings directly from today's live meters
+        today_incremental_self = max(0.0, self.today_solar_kwh - self.today_export_kwh)
         today_date = now.date()
         is_today_weekday = today_date.weekday() < 5
         
@@ -1302,7 +1453,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Calculate daily Peak and Off-Peak grid import separately in 2 passes
         total_peak_import_kwh = 0.0
         total_offpeak_import_kwh = 0.0
-        past_import_sum = 0.0
         
         daily_import_history = recorder_history.get("daily_import_kwh_history", [])
         
@@ -1315,7 +1465,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if imp_kwh is None or imp_kwh < 0.0:
                     imp_kwh = self.monthly_import_kwh / curr_day_val
                 
-                past_import_sum += imp_kwh
                 day_date = (start_dt + timedelta(days=idx)).date()
                 is_weekday = day_date.weekday() < 5
                 
@@ -1331,14 +1480,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 total_peak_import_kwh += day_peak
                 total_offpeak_import_kwh += day_offpeak
 
-        # Add today's incremental import
-        today_total_import = self.monthly_import_kwh
-        today_incremental_import = max(0.0, today_total_import - past_import_sum)
+        # Add today's incremental import directly from today's live meter
+        today_incremental_import = self.today_import_kwh
         today_date = now.date()
         is_today_weekday = today_date.weekday() < 5
         
         if is_today_weekday:
-            has_solar_today = self.monthly_solar_kwh > 1.0
+            has_solar_today = self.today_solar_kwh > 0.5 or self.monthly_solar_kwh > 1.0
             peak_share_today = 0.20 if has_solar_today else 0.45
             today_peak = today_incremental_import * peak_share_today
             today_offpeak = today_incremental_import * (1.0 - peak_share_today)
@@ -1385,6 +1533,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "monthly_solar_savings_thb": round(self.monthly_solar_savings_thb, 2),
             "monthly_solar_revenue_thb": round(monthly_solar_revenue_thb, 2),
             "monthly_total_solar_benefit_thb": round(monthly_total_solar_benefit_thb, 2),
+
+            # Today Calendar Day Live Entities
+            "today_import_kwh": round(self.today_import_kwh, 3),
+            "today_solar_kwh": round(self.today_solar_kwh, 3),
+            "today_export_kwh": round(self.today_export_kwh, 3),
+            "today_solar_savings_thb": round(today_savings, 2),
             
             # Lifetime Continuous Accumulators
             "lifetime_import_kwh": round(self.lifetime_import_kwh, 3),

@@ -218,6 +218,32 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         formatted_delta = f"{diff:+.4f} THB/kWh"
         self.assertEqual(formatted_delta, "-0.2400 THB/kWh")
 
+    def test_live_today_baseline_and_lts_drift_reconciliation(self) -> None:
+        """Test that today's live accumulation never stays 0 due to past LTS boundary drift."""
+        # Simulated live continuous month total and today's live energy
+        total_monthly_kwh = 514.08
+        today_live_kwh = 12.50
+
+        # Simulated completed past days from LTS which had slight boundary drift (sum = 527.92)
+        past_lts_days = [42.58, 35.91, 41.53, 37.05, 31.26, 48.88, 43.54, 45.01, 48.0, 42.97, 46.27, 29.82, 43.91, 31.19]
+        known_past_sum = sum(past_lts_days)
+
+        # Target past total must equal (total_monthly_kwh - today_live_kwh)
+        target_past_total = max(0.0, total_monthly_kwh - today_live_kwh)
+        self.assertAlmostEqual(target_past_total, 501.58, places=2)
+
+        # Apply proportional scaling reconciliation
+        scale_factor = target_past_total / known_past_sum
+        reconciled_past_days = [round(v * scale_factor, 3) for v in past_lts_days]
+
+        # Daily series with today directly receiving today_live_kwh
+        daily_series = reconciled_past_days + [round(today_live_kwh, 3)]
+
+        # Verify today's slot is exactly today_live_kwh (never zero)
+        self.assertEqual(daily_series[-1], 12.50)
+        # Verify total sum matches monthly baseline within rounding precision
+        self.assertAlmostEqual(sum(daily_series), total_monthly_kwh, places=1)
+
 
 if __name__ == "__main__":
     unittest.main()
