@@ -162,7 +162,28 @@
       setting_tier3_rate: "Tier 3 / Flat Rate (>400 kWh)",
       btn_save_settings: "💾 Save Configuration & Reload Integration",
       btn_saving_settings: "⏳ Saving...",
-      btn_saved_settings: "✅ Saved & Reloaded!"
+      btn_saved_settings: "✅ Saved & Reloaded!",
+
+      monthly_savings: "Monthly Savings",
+      higher_than: "Higher than",
+      day_label: "Day",
+      status_weekend_offpeak: "Weekend (100% Off-Peak)",
+      status_today_live: "Today (Live)",
+      status_past: "Past",
+      status_past_actual: "Past Actual",
+      status_projected: "Projected",
+      status_projected_runrate: "Projected Run-Rate",
+      tt_cumulative_bill: "Cumulative Bill:",
+      tt_added_on_day: "Added on Day",
+      tt_grid_import: "Grid Import:",
+      tt_solar_production: "Solar Production:",
+      tt_self_consumed: "Self-Consumed:",
+      tt_grid_export: "Grid Export:",
+      tt_production_yield: "Actual Solar Yield:",
+      tt_solcast_forecast: "Solcast PV Forecast:",
+      tt_self_consumption: "Internal Self-Consumption:",
+      tt_surplus_export: "Grid Export:",
+      tt_forecast_accuracy: "Forecast Ratio:"
     },
 
     th: {
@@ -312,7 +333,28 @@
       setting_tier3_rate: "อัตราขั้นที่ 3 / อัตราคงที่ (>400 kWh)",
       btn_save_settings: "💾 บันทึกการตั้งค่าและเริ่มการทำงานใหม่",
       btn_saving_settings: "⏳ กำลังบันทึก...",
-      btn_saved_settings: "✅ บันทึกและเริ่มการทำงานใหม่สำเร็จ!"
+      btn_saved_settings: "✅ บันทึกและเริ่มการทำงานใหม่สำเร็จ!",
+
+      monthly_savings: "ประหยัดต่อเดือน",
+      higher_than: "สูงกว่า",
+      day_label: "วันที่",
+      status_weekend_offpeak: "วันหยุด (Off-Peak 100%)",
+      status_today_live: "วันนี้ (ข้อมูลสด)",
+      status_past: "ย้อนหลัง",
+      status_past_actual: "ข้อมูลจริงย้อนหลัง",
+      status_projected: "ประมาณการ",
+      status_projected_runrate: "ประมาณการตามอัตราเฉลี่ย",
+      tt_cumulative_bill: "ยอดสะสม:",
+      tt_added_on_day: "เพิ่มขึ้นในวันที่",
+      tt_grid_import: "นำเข้าจากสายส่ง:",
+      tt_solar_production: "หน่วยผลิตโซลาร์:",
+      tt_self_consumed: "ใช้งานเองในบ้าน:",
+      tt_grid_export: "ส่งออกขายคืน:",
+      tt_production_yield: "หน่วยผลิตจริง:",
+      tt_solcast_forecast: "พยากรณ์ Solcast:",
+      tt_self_consumption: "ใช้เองในบ้าน:",
+      tt_surplus_export: "ส่งออกขายคืน:",
+      tt_forecast_accuracy: "ความแม่นยำพยากรณ์:"
     }
   };
 
@@ -1354,7 +1396,7 @@
       }
     };
 
-    setText('val-tou-status', d.touStatus);
+    setText('val-tou-status', d.isOffpeak ? this.t('offpeak_window') : this.t('peak_window'));
     setText('val-accrued-bill', `฿${this._formatNum(d.accruedBill)}`);
     setText('val-total-bill', `฿${this._formatNum(d.totalBill)}`);
     setText('val-base-cost', `฿${this._formatNum(d.accruedBaseCost)}`);
@@ -1372,14 +1414,14 @@
     setText('val-projected-solar-volume', `${this._formatNum(d.projectedSolarKwh)} kWh`);
     setText('val-projected-solar-savings', `฿${this._formatNum(d.projectedSolarSavings)} (${this._formatNum(d.projectedSelfConsumptionKwh)} kWh)`);
     setText('val-projected-solar-revenue', `฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)`);
-    setHtml('val-projected-solar-benefit-line', `Projected Solar Offset: <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% reduction vs ฿${this._formatNum(d.projectedBillWithoutSolar)} bill without solar)`);
+    setHtml('val-projected-solar-benefit-line', `${this.t('projected_solar_offset')} <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% ${this.t('reduction_vs')} ฿${this._formatNum(d.projectedBillWithoutSolar)} ${this.t('bill_without_solar')})`);
     setText('val-self-consumed-volume', `${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)`);
     setText('val-grid-export-volume', `${d.exportKwh} kWh`);
     setText('val-lifetime-savings', `฿${this._formatNum(d.lifetimeSolarSavings)}`);
     setText('val-lifetime-revenue', `฿${this._formatNum(d.lifetimeSolarRevenue)}`);
     setText('val-lifetime-benefit', `฿${d.lifetimeBenefit}`);
     setText('val-sellback-rate-display', `฿${d.sellbackRate} / kWh`);
-    setText('val-cycle-day', `Day ${d.currentDayOfCycle} / 30`);
+    setText('val-cycle-day', `${this.t('day_label')} ${d.currentDayOfCycle} / 30`);
 
     // Dynamic updates for Solcast Card
     setHtml('val-solcast-today-main', `${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span>`);
@@ -2428,13 +2470,13 @@
 
                 <!-- X-Axis Labels (Days 1 to 30) -->
                 <div class="svg-x-axis-labels">
-                  <span>Day 1</span>
-                  <span>Day 5</span>
-                  <span>Day 10</span>
-                  <span>Day 15</span>
-                  <span>Day 20</span>
-                  <span>Day 25</span>
-                  <span>Day 30</span>
+                  <span>${this.t('day_label')} 1</span>
+                  <span>${this.t('day_label')} 5</span>
+                  <span>${this.t('day_label')} 10</span>
+                  <span>${this.t('day_label')} 15</span>
+                  <span>${this.t('day_label')} 20</span>
+                  <span>${this.t('day_label')} 25</span>
+                  <span>${this.t('day_label')} 30</span>
                 </div>
               </div>
             </div>
@@ -2838,7 +2880,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.5 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.6 &bull; Home Assistant Custom Integration
       </div>
     `;
 

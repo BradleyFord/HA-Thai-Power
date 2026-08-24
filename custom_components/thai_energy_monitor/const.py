@@ -10,7 +10,7 @@ from typing import Final
 # Integration Domain & Identifiers
 DOMAIN: Final[str] = "thai_energy_monitor"
 ATTRIBUTION: Final[str] = "Data provided by Thailand Energy & Solar Monitor"
-VERSION: Final[str] = "2.3.5"
+VERSION: Final[str] = "2.3.6"
 
 # Configuration Entry Keys
 CONF_UTILITY_PROVIDER: Final[str] = "utility_provider"
