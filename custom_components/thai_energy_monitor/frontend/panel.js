@@ -1316,11 +1316,20 @@
           font-weight: 600;
         }
 
-        /* Grid Layout */
         .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
           gap: 20px;
+        }
+
+        .grid.two-col {
+          grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        }
+
+        @media (min-width: 860px) {
+          .grid.two-col {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
 
         .card {
@@ -1670,7 +1679,7 @@
 
       <!-- Tab 1: Detailed Billing Overview -->
       ${this._activeTab === 'overview' ? `
-        <div class="grid">
+        <div class="grid two-col">
           <div class="card">
             <h2>Current Accrued Bill (To Date) <span>(THB)</span></h2>
             <div class="metric-main" id="val-accrued-bill">฿${this._formatNum(d.accruedBill)}</div>
@@ -2419,7 +2428,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.3 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.4 &bull; Home Assistant Custom Integration
       </div>
     `;
 
