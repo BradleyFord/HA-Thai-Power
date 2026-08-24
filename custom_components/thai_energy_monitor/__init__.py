@@ -229,6 +229,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register custom service to trigger 12-month historical lookback comparison
     async def async_handle_trigger_12_month_lookback(call: ServiceCall) -> None:
         await coordinator.async_calculate_12_month_lookback()
+        await coordinator.async_request_refresh()
 
     if not hass.services.has_service(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK):
         hass.services.async_register(
@@ -240,6 +241,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register custom service to trigger 12-month BESS simulation lookback
     async def async_handle_trigger_bess_lookback(call: ServiceCall) -> None:
         await coordinator.async_calculate_bess_lookback()
+        await coordinator.async_request_refresh()
 
     if not hass.services.has_service(DOMAIN, SERVICE_TRIGGER_BESS_LOOKBACK):
         hass.services.async_register(
@@ -266,7 +268,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         grid_charging = bool(call.data.get("grid_charging", False))
         tariff_model = str(call.data.get("tariff_model", "tou"))
         solar_sellback_active = bool(call.data.get("solar_sellback_active", True))
-        
+
         # Update config entry data dictionary directly
         new_data = {
             **entry.data,
@@ -277,7 +279,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "bess_solar_sellback_active": solar_sellback_active,
         }
         hass.config_entries.async_update_entry(entry, data=new_data)
-        
+
         # Update coordinator parameters immediately
         coordinator.config_data["bess_capacity_kwh"] = capacity
         coordinator.config_data["bess_capex_cost"] = capex
@@ -285,10 +287,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator.config_data["bess_tariff_model"] = tariff_model
         coordinator.config_data["bess_solar_sellback_active"] = solar_sellback_active
         coordinator.bess_capex_cost = capex
-        
-        # Always recalculate 12-month BESS lookback if previously generated, otherwise refresh coordinator
-        if coordinator.bess_12_months_data is not None:
-            await coordinator.async_calculate_bess_lookback()
+
+        # Recalculate 12-month BESS lookback simulation and refresh coordinator
+        await coordinator.async_calculate_bess_lookback()
         await coordinator.async_request_refresh()
 
     if not hass.services.has_service(DOMAIN, SERVICE_CONFIGURE_BESS):

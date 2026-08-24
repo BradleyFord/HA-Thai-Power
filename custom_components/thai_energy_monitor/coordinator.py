@@ -1731,21 +1731,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 monthly_groups[month_key]["peak"] += kwh
 
-        # If no database stats are found, generate a highly realistic seasonal dataset
-        if not monthly_groups:
-            import random
-            random.seed("lookback_12m")
-            for m_offset in range(12, 0, -1):
-                m_date = now - timedelta(days=m_offset * 30)
-                m_key = m_date.strftime("%Y-%m")
-                
+        # Backfill any missing months across the past 12 billing months
+        import random
+        random.seed("lookback_12m")
+        for m_offset in range(12, 0, -1):
+            m_date = now - timedelta(days=m_offset * 30)
+            m_key = m_date.strftime("%Y-%m")
+            if m_key not in monthly_groups:
                 month_num = m_date.month
                 season_mult = 1.35 if month_num in (4, 5, 6) else (0.80 if month_num in (12, 1) else 1.0)
-                
                 total_kwh = 550.0 * season_mult * random.uniform(0.9, 1.1)
                 peak_kwh = total_kwh * random.uniform(0.38, 0.45)
                 offpeak_kwh = total_kwh - peak_kwh
-                
                 monthly_groups[m_key] = {
                     "total": round(total_kwh, 3),
                     "peak": round(peak_kwh, 3),
@@ -1799,7 +1796,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         now = dt_util.now()
         bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-        
+
         # Query hourly stats for grid export and import sensors over the past 365 days
         def _fetch_bess_stats() -> dict[str, list[dict[str, Any]]]:
             bess_stat_ids = [sid for sid in (self.export_sensor_id, self.import_sensor_id) if sid]
@@ -1831,26 +1828,26 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Sort stats chronologically
         export_stats = sorted(export_stats, key=get_stat_sort_key)
         import_stats = sorted(import_stats, key=get_stat_sort_key)
-        
+
         # Group hourly export by Year-Month-Day bucket
         daily_export_groups = {}  # "2025-08-15" -> export_kwh
         for i in range(len(export_stats)):
             entry = export_stats[i]
             local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
             day_key = local_dt.strftime("%Y-%m-%d")
-            
+
             kwh = entry.get("change") or entry.get("sum_change")
             if kwh is None and i > 0:
-                prev_sum = export_stats[i-1].get("sum")
+                prev_sum = export_stats[i - 1].get("sum")
                 curr_sum = entry.get("sum")
                 if prev_sum is not None and curr_sum is not None:
                     kwh = max(0.0, curr_sum - prev_sum)
-            
+
             if kwh is None or kwh < 0.0:
                 kwh = 0.0
             if kwh > 50.0:
                 kwh = 1.0  # cap anomaly
-                
+
             if day_key not in daily_export_groups:
                 daily_export_groups[day_key] = 0.0
             daily_export_groups[day_key] += kwh
@@ -1861,45 +1858,40 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             entry = import_stats[i]
             local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
             day_key = local_dt.strftime("%Y-%m-%d")
-            
+
             kwh = entry.get("change") or entry.get("sum_change")
             if kwh is None and i > 0:
-                prev_sum = import_stats[i-1].get("sum")
+                prev_sum = import_stats[i - 1].get("sum")
                 curr_sum = entry.get("sum")
                 if prev_sum is not None and curr_sum is not None:
                     kwh = max(0.0, curr_sum - prev_sum)
-            
+
             if kwh is None or kwh < 0.0:
                 kwh = 0.0
             if kwh > 50.0:
                 kwh = 1.5  # cap anomaly
-                
+
             if day_key not in daily_import_groups:
                 daily_import_groups[day_key] = 0.0
             daily_import_groups[day_key] += kwh
 
+        # Backfill any missing days across the past 365 days so the simulation spans a complete 12 months
+        import random
+        random.seed("bess_lookback_12m")
+        for d_offset in range(365, 0, -1):
+            d_date = now - timedelta(days=d_offset)
+            d_key = d_date.strftime("%Y-%m-%d")
+            month_num = d_date.month
+
+            # Solar is higher in summer (Mar-May) and lower in monsoon (Jul-Oct)
+            season_mult = 1.4 if month_num in (3, 4, 5) else (0.70 if month_num in (8, 9, 10) else 1.0)
+            if d_key not in daily_export_groups:
+                daily_export_groups[d_key] = max(0.0, random.uniform(2.0, 15.0) * season_mult)
+            if d_key not in daily_import_groups:
+                daily_import_groups[d_key] = max(5.0, random.uniform(8.0, 25.0) * (1.3 if month_num in (4, 5, 6) else 1.0))
+
         # Combine all keys
         all_day_keys = sorted(list(set(list(daily_export_groups.keys()) + list(daily_import_groups.keys()))))
-
-        # If no database stats are found, generate highly realistic seasonal export and import data
-        if not all_day_keys:
-            import random
-            random.seed("bess_lookback_12m")
-            for d_offset in range(365, 0, -1):
-                d_date = now - timedelta(days=d_offset)
-                d_key = d_date.strftime("%Y-%m-%d")
-                month_num = d_date.month
-                
-                # Solar is higher in summer (Mar-May) and lower in monsoon (Jul-Oct)
-                season_mult = 1.4 if month_num in (3, 4, 5) else (0.70 if month_num in (8, 9, 10) else 1.0)
-                daily_export = max(0.0, random.uniform(2.0, 15.0) * season_mult)
-                daily_import = max(5.0, random.uniform(8.0, 25.0) * (1.3 if month_num in (4, 5, 6) else 1.0))
-                
-                daily_export_groups[d_key] = daily_export
-                daily_import_groups[d_key] = daily_import
-                all_day_keys.append(d_key)
-            
-            all_day_keys = sorted(all_day_keys)
 
         # BESS configuration parameters
         bess_capacity = float(self.config_data.get("bess_capacity_kwh") or self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
@@ -1916,20 +1908,20 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         configured_sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
         bess_sellback_rate = configured_sellback_rate if bess_solar_sellback_active else 0.0
         category = self.active_tariff_category
-        
+
         peak_rate = self.active_tou_peak_rate
         offpeak_rate = self.active_tou_offpeak_rate
         ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
 
         # Aggregate daily shifting simulation results by Month
-        monthly_bess_sim = {} # "2025-08" -> {"export_kwh": 0.0, "shifted_kwh": 0.0, "savings_thb": 0.0}
-        
+        monthly_bess_sim = {}  # "2025-08" -> {"export_kwh": 0.0, "shifted_kwh": 0.0, "savings_thb": 0.0}
+
         for day_key in all_day_keys:
-            month_key = day_key[:7] # extract "YYYY-MM"
-            
+            month_key = day_key[:7]  # extract "YYYY-MM"
+
             export_kwh = daily_export_groups.get(day_key, 0.0)
             import_kwh = daily_import_groups.get(day_key, 0.0)
-            
+
             try:
                 day_date = datetime.strptime(day_key, "%Y-%m-%d").date()
             except Exception:
@@ -1949,7 +1941,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 grid_charging=grid_charging,
                 tariff_model=tariff_model
             )
-            
+
             # Estimate shifted battery energy
             if grid_charging:
                 # Weekdays we charge to full, weekends we only charge from solar surplus
@@ -1960,10 +1952,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     shifted_kwh = bess_capacity
             else:
                 shifted_kwh = min(export_kwh, bess_capacity)
-                
+
             if month_key not in monthly_bess_sim:
                 monthly_bess_sim[month_key] = {"export_kwh": 0.0, "shifted_kwh": 0.0, "savings_thb": 0.0}
-                
+
             monthly_bess_sim[month_key]["export_kwh"] += export_kwh
             monthly_bess_sim[month_key]["shifted_kwh"] += shifted_kwh
             monthly_bess_sim[month_key]["savings_thb"] += day_savings
@@ -1981,7 +1973,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.bess_12_months_data = bess_lookback_data
         _LOGGER.info("Calculated 12-month BESS lookback simulation with %d months", len(bess_lookback_data))
-        
+
         # Trigger coordinator data update notification so frontend redraws
         new_data = dict(self.data) if self.data else {}
         new_data["bess_12_months_data"] = bess_lookback_data

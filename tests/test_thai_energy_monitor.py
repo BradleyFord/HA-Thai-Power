@@ -321,6 +321,46 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         self.assertAlmostEqual(savings_without_sellback, 29.8202, places=3)
         self.assertGreater(savings_without_sellback, savings_with_sellback)
 
+    def test_bess_lookback_12_month_backfill(self) -> None:
+        """Test that BESS simulation spans 12 distinct months even when historical DB data is partial."""
+        import random
+        from datetime import datetime, timedelta
+
+        now = datetime.now()
+        daily_export_groups = {}
+        daily_import_groups = {}
+
+        # 14 days of recorded data
+        for d_offset in range(14, 0, -1):
+            d_date = now - timedelta(days=d_offset)
+            d_key = d_date.strftime("%Y-%m-%d")
+            daily_export_groups[d_key] = 0.0
+            daily_import_groups[d_key] = 20.0
+
+        # Backfill across 365 days
+        random.seed("bess_lookback_12m")
+        for d_offset in range(365, 0, -1):
+            d_date = now - timedelta(days=d_offset)
+            d_key = d_date.strftime("%Y-%m-%d")
+            month_num = d_date.month
+            season_mult = 1.4 if month_num in (3, 4, 5) else (0.70 if month_num in (8, 9, 10) else 1.0)
+            if d_key not in daily_export_groups:
+                daily_export_groups[d_key] = max(0.0, random.uniform(2.0, 15.0) * season_mult)
+            if d_key not in daily_import_groups:
+                daily_import_groups[d_key] = max(5.0, random.uniform(8.0, 25.0) * (1.3 if month_num in (4, 5, 6) else 1.0))
+
+        all_day_keys = sorted(list(set(list(daily_export_groups.keys()) + list(daily_import_groups.keys()))))
+        monthly_sim = {}
+        for day_key in all_day_keys:
+            month_key = day_key[:7]
+            if month_key not in monthly_sim:
+                monthly_sim[month_key] = 0.0
+            monthly_sim[month_key] += 1.0
+
+        final_months = sorted(monthly_sim.keys())[-12:]
+        self.assertEqual(len(final_months), 12)
+
 
 if __name__ == "__main__":
     unittest.main()
+

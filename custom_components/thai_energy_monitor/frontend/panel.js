@@ -1333,11 +1333,18 @@
         this._initialRender();
         this._hass.callService('thai_energy_monitor', 'trigger_12_month_lookback', {})
           .then(() => {
-            setTimeout(() => {
-              this._isAnalyzing = false;
+            let attempts = 0;
+            const checkData = () => {
+              attempts++;
               this._extractData();
-              this._initialRender();
-            }, 300);
+              if ((this._data && this._data.lookbackData && this._data.lookbackData.length > 0) || attempts >= 10) {
+                this._isAnalyzing = false;
+                this._initialRender();
+              } else {
+                setTimeout(checkData, 250);
+              }
+            };
+            setTimeout(checkData, 200);
           })
           .catch((err) => {
             console.error("Lookback analysis failed:", err);
@@ -1354,11 +1361,18 @@
         this._initialRender();
         this._hass.callService('thai_energy_monitor', 'trigger_bess_lookback', {})
           .then(() => {
-            setTimeout(() => {
-              this._isBessAnalyzing = false;
+            let attempts = 0;
+            const checkData = () => {
+              attempts++;
               this._extractData();
-              this._initialRender();
-            }, 300);
+              if ((this._data && this._data.bess12MonthsData && this._data.bess12MonthsData.length > 0) || attempts >= 10) {
+                this._isBessAnalyzing = false;
+                this._initialRender();
+              } else {
+                setTimeout(checkData, 250);
+              }
+            };
+            setTimeout(checkData, 200);
           })
           .catch((err) => {
             console.error("BESS simulation failed:", err);
@@ -1397,10 +1411,16 @@
           }).then(() => {
             btnSaveBess.innerHTML = '✅ Saved & Recalculated!';
             btnSaveBess.style.backgroundColor = 'var(--success-color, #4caf50)';
-            setTimeout(() => {
+            let attempts = 0;
+            const checkData = () => {
+              attempts++;
               this._extractData();
               this._initialRender();
-            }, 300);
+              if (attempts < 6) {
+                setTimeout(checkData, 300);
+              }
+            };
+            setTimeout(checkData, 200);
             setTimeout(() => {
               btnSaveBess.innerHTML = origHtml;
               btnSaveBess.style.backgroundColor = 'var(--primary-color, #03a9f4)';
