@@ -25,9 +25,12 @@ from .const import (
     CONF_SOLAR_PROD_SENSOR,
     CONF_FT_RATE,
     CONF_SOLAR_SELLBACK_RATE,
+    CONF_ENABLE_SOLAR_SELLBACK,
     CONF_MEA_EBILL,
     CONF_MEA_EPAYMENT,
     CONF_BESS_CAPACITY_KWH,
+    CONF_BESS_SOLAR_SELLBACK_ACTIVE,
+    DEFAULT_ENABLE_SOLAR_SELLBACK,
 )
 from .coordinator import ThaiEnergyDataUpdateCoordinator
 
@@ -253,6 +256,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Required("capex_cost"): vol.Coerce(float),
             vol.Optional("grid_charging"): vol.Coerce(bool),
             vol.Optional("tariff_model"): vol.Coerce(str),
+            vol.Optional("solar_sellback_active"): vol.Coerce(bool),
         }
     )
 
@@ -261,6 +265,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         capex = float(call.data["capex_cost"])
         grid_charging = bool(call.data.get("grid_charging", False))
         tariff_model = str(call.data.get("tariff_model", "tou"))
+        solar_sellback_active = bool(call.data.get("solar_sellback_active", True))
         
         # Update config entry data dictionary directly
         new_data = {
@@ -268,7 +273,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "bess_capacity_kwh": capacity,
             "bess_capex_cost": capex,
             "bess_grid_charging": grid_charging,
-            "bess_tariff_model": tariff_model
+            "bess_tariff_model": tariff_model,
+            "bess_solar_sellback_active": solar_sellback_active,
         }
         hass.config_entries.async_update_entry(entry, data=new_data)
         
@@ -277,6 +283,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator.config_data["bess_capex_cost"] = capex
         coordinator.config_data["bess_grid_charging"] = grid_charging
         coordinator.config_data["bess_tariff_model"] = tariff_model
+        coordinator.config_data["bess_solar_sellback_active"] = solar_sellback_active
         coordinator.bess_capex_cost = capex
         
         # Always recalculate 12-month BESS lookback if previously generated, otherwise refresh coordinator
@@ -304,6 +311,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Required(CONF_SOLAR_PROD_SENSOR): cv.string,
             vol.Required(CONF_FT_RATE): vol.Coerce(float),
             vol.Required(CONF_SOLAR_SELLBACK_RATE): vol.Coerce(float),
+            vol.Optional(CONF_ENABLE_SOLAR_SELLBACK): vol.Coerce(bool),
             vol.Required(CONF_MEA_EBILL): vol.Coerce(bool),
             vol.Required(CONF_MEA_EPAYMENT): vol.Coerce(bool),
             vol.Optional("custom_peak_rate"): vol.Coerce(float),
@@ -318,6 +326,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         grid_import = call.data[CONF_GRID_IMPORT_SENSOR]
         grid_export = call.data.get(CONF_GRID_EXPORT_SENSOR) or grid_import
         solar_prod = call.data[CONF_SOLAR_PROD_SENSOR]
+        enable_solar_sellback = bool(call.data.get(CONF_ENABLE_SOLAR_SELLBACK, True))
 
         new_data = {
             CONF_UTILITY_PROVIDER: call.data[CONF_UTILITY_PROVIDER],
@@ -328,6 +337,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             CONF_SOLAR_PROD_SENSOR: solar_prod,
             CONF_FT_RATE: float(call.data[CONF_FT_RATE]),
             CONF_SOLAR_SELLBACK_RATE: float(call.data[CONF_SOLAR_SELLBACK_RATE]),
+            CONF_ENABLE_SOLAR_SELLBACK: enable_solar_sellback,
             CONF_MEA_EBILL: bool(call.data[CONF_MEA_EBILL]),
             CONF_MEA_EPAYMENT: bool(call.data[CONF_MEA_EPAYMENT]),
         }
@@ -346,6 +356,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             new_data["bess_grid_charging"] = entry.data["bess_grid_charging"]
         if "bess_tariff_model" in entry.data:
             new_data["bess_tariff_model"] = entry.data["bess_tariff_model"]
+        if "bess_solar_sellback_active" in entry.data:
+            new_data["bess_solar_sellback_active"] = entry.data["bess_solar_sellback_active"]
 
         old_ft = entry.data.get(CONF_FT_RATE)
         new_ft = float(call.data[CONF_FT_RATE])

@@ -151,6 +151,11 @@
       settings_financial_title: "Financial & Subscription Options",
       setting_ft_rate: "Ft Charge rate (THB / kWh)",
       setting_sellback_rate: "Solar Buy-back sellback rate (THB / kWh)",
+      setting_enable_solar_sellback: "Enable Solar Export Buy-Back Revenue (MEA/PEA Rooftop Scheme)",
+      bess_sellback_active_label: "Solar Export Buy-Back Active (Deducts ฿2.20 opportunity cost)",
+      bess_no_sellback_hint: "Without buy-back, stored solar earns full peak retail savings with zero opportunity cost deduction.",
+      no_sellback_contract: "No Buy-Back (Zero Feed-in)",
+      unmonetized_export: "Unmonetized Export",
       setting_ebill: "Active MEA e-Bill",
       setting_epayment: "Active MEA e-Payment",
       settings_custom_rates_title: "Custom Base Energy Rate Overrides (Optional)",
@@ -341,6 +346,11 @@
       settings_financial_title: "อัตราค่าบริการและเงื่อนไขทางการเงิน",
       setting_ft_rate: "อัตราค่า Ft (บาท / kWh)",
       setting_sellback_rate: "ราคารับซื้อไฟคืนโครงการโซลาร์ (บาท / kWh)",
+      setting_enable_solar_sellback: "เปิดใช้งานรายรับจากการขายไฟคืน (โครงการโซลาร์ภาคประชาชน)",
+      bess_sellback_active_label: "มีสัญญารับซื้อไฟคืนจากการขายไฟ (หักค่าเสียโอกาส 2.20 บ./หน่วย)",
+      bess_no_sellback_hint: "เมื่อไม่มีสัญญาขายไฟคืน ไฟโซลาร์ที่กักเก็บในแบตเตอรี่จะประหยัดค่าไฟช่วง Peak เต็มจำนวนโดยไม่ถูกหักค่าเสียโอกาส",
+      no_sellback_contract: "ไม่มีสัญญาขายไฟคืน",
+      unmonetized_export: "ส่งออก (ไม่มีรายรับ)",
       setting_ebill: "สมัครบริการ MEA e-Bill",
       setting_epayment: "สมัครบริการ MEA e-Payment",
       settings_custom_rates_title: "กำหนดอัตราค่าไฟฐานเอง (ทางเลือกเพิ่มเติม)",
@@ -703,7 +713,9 @@
     const totalVatNum = parseFloat(vatAmount) || 0;
     const ftRate = getAttribute(billEntityId, 'ft_rate') || 0.395;
     const tariffCategory = getAttribute(billEntityId, 'tariff_category') || '1.2';
+    const enableSolarSellback = getAttribute(billEntityId, 'enable_solar_sellback') !== false;
     const sellbackRate = getAttribute(billEntityId, 'solar_sellback_rate') || 2.20;
+    const effectiveSellbackRate = enableSolarSellback ? (parseFloat(sellbackRate) || 2.20) : 0.0;
     const VAT_RATE = 0.07;
 
     // Check if active tariff is TOU (Time of Use 1.3.1 or 1.3.2)
@@ -864,7 +876,7 @@
       const activeRetailRate = isTou
         ? (0.40 * peakRate + 0.60 * offpeakRate)
         : (bar.tier3 > 0 ? 4.4217 : (bar.tier2 > 0 ? 4.2218 : 3.2482));
-      const solBenefit = (selfKwh * activeRetailRate) + (expKwh * sellbackRate);
+      const solBenefit = (selfKwh * activeRetailRate) + (expKwh * effectiveSellbackRate);
 
       dailyBreakdown.push({
         day: dayNum,
@@ -961,6 +973,11 @@
       gridPrice: getEntityState('sensor.current_grid_energy_import_price'),
       ftRate: getEntityState('sensor.current_ft_adjustment_rate') || getAttribute(billEntityId, 'ft_rate') || '0.3950',
       sellbackRate: getEntityState('sensor.solar_buy_back_rate') || getAttribute(billEntityId, 'solar_sellback_rate') || '2.20',
+      effectiveSellbackRate: effectiveSellbackRate,
+      enableSolarSellback: enableSolarSellback,
+      bessSolarSellbackActive: getAttribute(billEntityId, 'bess_solar_sellback_active') !== undefined
+        ? (getAttribute(billEntityId, 'bess_solar_sellback_active') === true || getAttribute(billEntityId, 'bess_solar_sellback_active') === 'true')
+        : enableSolarSellback,
       tariffDiff: getEntityState('sensor.predictive_tariff_difference'),
       bessSavings: getEntityState('sensor.bess_storage_simulated_savings'),
       outageCost: getEntityState('sensor.grid_outage_economic_cost'),
@@ -1358,11 +1375,13 @@
         const capexInput = shadow.getElementById('input-bess-capex');
         const gridChargeInput = shadow.getElementById('input-bess-grid-charge');
         const tariffModelInput = shadow.getElementById('input-bess-tariff-model');
+        const solarSellbackInput = shadow.getElementById('input-bess-solar-sellback');
         if (capacityInput && capexInput) {
           const cap = parseFloat(capacityInput.value) || 5.0;
           const capex = parseFloat(capexInput.value) || 50000.0;
           const gridCharge = gridChargeInput ? gridChargeInput.checked === true : false;
           const tariffModel = tariffModelInput ? tariffModelInput.value : 'tou';
+          const solarSellbackActive = solarSellbackInput ? solarSellbackInput.checked === true : true;
           
           const origHtml = btnSaveBess.innerHTML;
           btnSaveBess.innerHTML = '⏳ Saving & Recalculating...';
@@ -1373,7 +1392,8 @@
             battery_capacity: cap,
             capex_cost: capex,
             grid_charging: gridCharge,
-            tariff_model: tariffModel
+            tariff_model: tariffModel,
+            solar_sellback_active: solarSellbackActive
           }).then(() => {
             btnSaveBess.innerHTML = '✅ Saved & Recalculated!';
             btnSaveBess.style.backgroundColor = 'var(--success-color, #4caf50)';
@@ -1414,6 +1434,7 @@
         if (isNaN(ftRate)) ftRate = 0.3950;
         let sellbackRate = parseFloat(shadow.getElementById('setting-sellback-rate')?.value || '2.20');
         if (isNaN(sellbackRate)) sellbackRate = 2.20;
+        const enableSolarSellback = shadow.getElementById('setting-enable-solar-sellback')?.checked !== false;
         const meaEbill = shadow.getElementById('setting-mea-ebill')?.checked === true;
         const meaEpayment = shadow.getElementById('setting-mea-epayment')?.checked === true;
 
@@ -1432,6 +1453,7 @@
           solar_prod_sensor: solarProd,
           ft_rate: ftRate,
           solar_sellback_rate: sellbackRate,
+          enable_solar_sellback: enableSolarSellback,
           mea_ebill_active: meaEbill,
           mea_epayment_active: meaEpayment
         };
@@ -1497,21 +1519,21 @@
     setText('val-solar-benefit', `฿${d.totalSolarBenefit}`);
     setText('val-solar-savings-main', `฿${this._formatNum(d.solarSavings)}`);
     setText('val-solar-savings', `฿${this._formatNum(d.solarSavings)}`);
-    setText('val-solar-revenue-main', `฿${this._formatNum(d.solarRevenue)}`);
+    setHtml('val-solar-revenue-main', d.enableSolarSellback ? `฿${this._formatNum(d.solarRevenue)}` : `฿0.00 <span style="font-size: 14px; font-weight: normal; color: var(--secondary-text-color, #9e9e9e);">(${this.t('no_sellback_contract')})</span>`);
     setText('val-solar-revenue', `฿${this._formatNum(d.solarRevenue)}`);
 
     // Dynamic updates for Solar Cards
     setText('val-solar-volume', `${d.solarKwh} kWh`);
     setText('val-projected-solar-volume', `${this._formatNum(d.projectedSolarKwh)} kWh`);
     setText('val-projected-solar-savings', `฿${this._formatNum(d.projectedSolarSavings)} (${this._formatNum(d.projectedSelfConsumptionKwh)} kWh)`);
-    setText('val-projected-solar-revenue', `฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)`);
+    setText('val-projected-solar-revenue', d.enableSolarSellback ? `฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)` : `฿0.00 (${this.t('no_sellback_contract')})`);
     setHtml('val-projected-solar-benefit-line', `${this.t('projected_solar_offset')} <strong>฿${this._formatNum(d.projectedTotalSolarBenefit)}</strong> (${d.projectedSolarReductionPct}% ${this.t('reduction_vs')} ฿${this._formatNum(d.projectedBillWithoutSolar)} ${this.t('bill_without_solar')})`);
     setText('val-self-consumed-volume', `${d.selfConsumedKwh} kWh (${d.selfConsumptionRatio}%)`);
-    setText('val-grid-export-volume', `${d.exportKwh} kWh`);
+    setText('val-grid-export-volume', d.enableSolarSellback ? `${d.exportKwh} kWh` : `${d.exportKwh} kWh (${this.t('unmonetized_export')})`);
     setText('val-lifetime-savings', `฿${this._formatNum(d.lifetimeSolarSavings)}`);
     setText('val-lifetime-revenue', `฿${this._formatNum(d.lifetimeSolarRevenue)}`);
     setText('val-lifetime-benefit', `฿${d.lifetimeBenefit}`);
-    setText('val-sellback-rate-display', `฿${d.sellbackRate} / kWh`);
+    setText('val-sellback-rate-display', d.enableSolarSellback ? `฿${d.sellbackRate} / kWh` : `฿0.00 / kWh (${this.t('no_sellback_contract')})`);
     setText('val-cycle-day', `${this.t('day_label')} ${d.currentDayOfCycle} / 30`);
 
     // Dynamic updates for Solcast Card
@@ -1879,9 +1901,16 @@
           grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
         }
 
+        .grid.split-2-1 {
+          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+
         @media (min-width: 860px) {
           .grid.two-col {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .grid.split-2-1 {
+            grid-template-columns: 2fr 1fr;
           }
         }
 
@@ -2486,22 +2515,24 @@
 
           <div class="card">
             <h2>${this.t('solar_revenue_title')}</h2>
-            <div class="metric-main saving" id="val-solar-revenue-main">฿${this._formatNum(d.solarRevenue)}</div>
-            <div style="font-size: 13px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;">
-              ${this.t('projected_month_end_revenue')} <strong id="val-projected-solar-revenue">฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)</strong>
+            <div class="metric-main ${d.enableSolarSellback ? 'saving' : ''}" id="val-solar-revenue-main">
+              ${d.enableSolarSellback ? `฿${this._formatNum(d.solarRevenue)}` : `฿0.00 <span style="font-size: 14px; font-weight: normal; color: var(--secondary-text-color, #9e9e9e);">(${this.t('no_sellback_contract')})</span>`}
+            </div>
+            <div style="font-size: 13px; color: ${d.enableSolarSellback ? 'var(--success-color, #4caf50)' : 'var(--secondary-text-color, #9e9e9e)'}; margin-bottom: 12px; font-weight: 500;">
+              ${this.t('projected_month_end_revenue')} <strong id="val-projected-solar-revenue">${d.enableSolarSellback ? `฿${this._formatNum(d.projectedSolarRevenue)} (${this._formatNum(d.projectedExportKwh)} kWh)` : `฿0.00 (${this.t('no_sellback_contract')})`}</strong>
             </div>
             <div class="table-rows">
               <div class="row">
                 <span class="label">${this.t('export_buyback_rate')}</span>
-                <span class="val" id="val-sellback-rate-display">฿${d.sellbackRate} / kWh</span>
+                <span class="val" id="val-sellback-rate-display">${d.enableSolarSellback ? `฿${d.sellbackRate} / kWh` : `฿0.00 / kWh (${this.t('no_sellback_contract')})`}</span>
               </div>
               <div class="row">
                 <span class="label">${this.t('grid_export_vol')}</span>
-                <span class="val" id="val-grid-export-volume">${d.exportKwh} kWh</span>
+                <span class="val" id="val-grid-export-volume">${d.exportKwh} kWh ${!d.enableSolarSellback ? `(${this.t('unmonetized_export')})` : ''}</span>
               </div>
               <div class="row">
                 <span class="label">${this.t('lifetime_grid_export_revenue')}</span>
-                <span class="val saving" id="val-lifetime-revenue">฿${this._formatNum(d.lifetimeSolarRevenue)}</span>
+                <span class="val ${d.enableSolarSellback ? 'saving' : ''}" id="val-lifetime-revenue">฿${this._formatNum(d.lifetimeSolarRevenue)}</span>
               </div>
             </div>
           </div>
@@ -2631,6 +2662,14 @@
                   <input type="checkbox" id="input-bess-grid-charge" ${d.bessGridCharging ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" /> ${this.t('enable_grid_charging')}
                 </label>
               </div>
+              <div style="grid-column: 1 / -1; margin-top: 2px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="input-bess-solar-sellback" ${d.bessSolarSellbackActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" /> ${this.t('bess_sellback_active_label')}
+                </label>
+                <div style="font-size: 11px; color: var(--secondary-text-color, #9e9e9e); margin-left: 24px; margin-top: 2px;">
+                  ${this.t('bess_no_sellback_hint')}
+                </div>
+              </div>
             </div>
             <button class="action-btn" id="btn-save-bess" style="width: 100%; background-color: var(--primary-color, #03a9f4); color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; transition: background-color 0.2s;">
               ${this.t('btn_save_bess')}
@@ -2703,7 +2742,7 @@
 
       <!-- Tab 4: Detailed Tariff Optimizer -->
       ${this._activeTab === 'predictive' ? `
-        <div class="grid">
+        <div class="grid split-2-1">
           <div class="card full-width">
             <h2>${this.t('tariff_optimizer_title')}</h2>
             <p style="font-size: 14px; color: var(--secondary-text-color, #9e9e9e); line-height: 1.5; margin-bottom: 20px;">
@@ -2963,7 +3002,12 @@
                 <label style="display: block; font-size: 12px; color: #9e9e9e; margin-bottom: 6px;">${this.t('setting_sellback_rate')}</label>
                 <input type="number" id="setting-sellback-rate" value="${d.sellbackRate}" step="0.01" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(255,255,255,0.12)); background-color: rgba(0,0,0,0.25); color: #fff; box-sizing: border-box; font-size: 14px; outline: none;" />
               </div>
-              <div style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
+              <div style="grid-column: 1 / -1; margin-top: 2px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer;">
+                  <input type="checkbox" id="setting-enable-solar-sellback" ${d.enableSolarSellback ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> ${this.t('setting_enable_solar_sellback')}
+                </label>
+              </div>
+              <div style="display: flex; gap: 20px; align-items: center; margin-top: 6px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; cursor: pointer;">
                   <input type="checkbox" id="setting-mea-ebill" ${d.meaEbillActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" /> ${this.t('setting_ebill')}
                 </label>

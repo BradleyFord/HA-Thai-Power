@@ -10,7 +10,7 @@ from typing import Final
 # Integration Domain & Identifiers
 DOMAIN: Final[str] = "thai_energy_monitor"
 ATTRIBUTION: Final[str] = "Data provided by Thailand Energy & Solar Monitor"
-VERSION: Final[str] = "2.3.9"
+VERSION: Final[str] = "2.4.0"
 
 # Configuration Entry Keys
 CONF_UTILITY_PROVIDER: Final[str] = "utility_provider"
@@ -23,11 +23,13 @@ CONF_SOLAR_PROD_SENSOR: Final[str] = "solar_prod_sensor"
 # Adjustable Financial Parameters Keys
 CONF_FT_RATE: Final[str] = "ft_rate"
 CONF_SOLAR_SELLBACK_RATE: Final[str] = "solar_sellback_rate"
+CONF_ENABLE_SOLAR_SELLBACK: Final[str] = "enable_solar_sellback"
 CONF_MEA_EBILL: Final[str] = "mea_ebill_active"
 CONF_MEA_EPAYMENT: Final[str] = "mea_epayment_active"
 CONF_BESS_CAPACITY_KWH: Final[str] = "bess_capacity_kwh"
 CONF_BESS_GRID_CHARGING: Final[str] = "bess_grid_charging"
 CONF_BESS_TARIFF_MODEL: Final[str] = "bess_tariff_model"
+CONF_BESS_SOLAR_SELLBACK_ACTIVE: Final[str] = "bess_solar_sellback_active"
 CONF_CUSTOM_PEAK_RATE: Final[str] = "custom_peak_rate"
 CONF_CUSTOM_OFFPEAK_RATE: Final[str] = "custom_offpeak_rate"
 CONF_CUSTOM_TIER1_RATE: Final[str] = "custom_tier1_rate"
@@ -57,6 +59,7 @@ VAT_RATE: Final[float] = 0.07
 # Financial Parameter Default Values (in THB)
 DEFAULT_FT_RATE: Final[float] = 0.3950          # Ft charge THB/kWh (e.g. May-Aug 2026 baseline)
 DEFAULT_SOLAR_SELLBACK: Final[float] = 2.20     # Solar Prachachon net billing buy-back rate THB/kWh
+DEFAULT_ENABLE_SOLAR_SELLBACK: Final[bool] = True # Whether solar sellback buy-back contract is active
 DEFAULT_OUTAGE_COST_PER_KWH: Final[float] = 308.41 # Macroeconomic outage loss metric THB/kWh
 
 # Tariff 1.1 - Tiered Rates (THB/kWh) and Fixed Service Charge (THB/month)

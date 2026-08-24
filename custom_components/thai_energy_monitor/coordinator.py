@@ -29,7 +29,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_BESS_CAPACITY_KWH,
+    CONF_BESS_SOLAR_SELLBACK_ACTIVE,
     CONF_BILLING_DAY,
+    CONF_ENABLE_SOLAR_SELLBACK,
     CONF_FT_RATE,
     CONF_GRID_EXPORT_SENSOR,
     CONF_GRID_IMPORT_SENSOR,
@@ -39,6 +41,7 @@ from .const import (
     CONF_SOLAR_SELLBACK_RATE,
     CONF_TARIFF_CATEGORY,
     CONF_UTILITY_PROVIDER,
+    DEFAULT_ENABLE_SOLAR_SELLBACK,
     DEFAULT_FT_RATE,
     DEFAULT_OUTAGE_COST_PER_KWH,
     DEFAULT_SOLAR_SELLBACK,
@@ -1252,7 +1255,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.lifetime_solar_savings_thb = lifetime_self_consumption * lifetime_savings_rate
 
-        sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
+        enable_solar_sellback = bool(self.config_data.get(CONF_ENABLE_SOLAR_SELLBACK, DEFAULT_ENABLE_SOLAR_SELLBACK))
+        configured_sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
+        sellback_rate = configured_sellback_rate if enable_solar_sellback else 0.0
+
         monthly_solar_revenue_thb = self.monthly_export_kwh * sellback_rate
         monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + monthly_solar_revenue_thb
 
@@ -1404,6 +1410,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         bess_efficiency = 0.90
         grid_charging = bool(self.config_data.get("bess_grid_charging", False))
         tariff_model = self.config_data.get("bess_tariff_model", "tou")
+        bess_solar_sellback_active = bool(
+            self.config_data.get(
+                CONF_BESS_SOLAR_SELLBACK_ACTIVE,
+                self.config_data.get("bess_solar_sellback_active", enable_solar_sellback)
+            )
+        )
+        bess_sellback_rate = configured_sellback_rate if bess_solar_sellback_active else 0.0
 
         total_shifted_savings = 0.0
         daily_export_history = recorder_history.get("daily_export_kwh_history", [])
@@ -1421,7 +1434,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 import_kwh=imp_kwh,
                 bess_capacity=bess_capacity,
                 bess_efficiency=bess_efficiency,
-                sellback_rate=sellback_rate,
+                sellback_rate=bess_sellback_rate,
                 peak_rate=self.active_tou_peak_rate,
                 offpeak_rate=self.active_tou_offpeak_rate,
                 ft_rate=ft_rate,
@@ -1617,7 +1630,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "is_offpeak": is_offpeak,
             "marginal_rate": round(marginal_rate, 4),
             "ft_rate": ft_rate,
-            "solar_sellback_rate": sellback_rate,
+            "solar_sellback_rate": configured_sellback_rate,
+            "effective_solar_sellback_rate": sellback_rate,
+            "enable_solar_sellback": enable_solar_sellback,
             "active_tariff_category": self.active_tariff_category,
 
             # Predictive & Simulation Analytics
@@ -1628,6 +1643,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "bess_capex_cost": float(self.config_data.get("bess_capex_cost") or getattr(self, "bess_capex_cost", 50000.0)),
             "bess_grid_charging": grid_charging,
             "bess_tariff_model": tariff_model,
+            "bess_solar_sellback_active": bess_solar_sellback_active,
             
             # Grid Outages & Resilience Tracking
             "is_grid_outage": self.is_grid_outage,
@@ -1890,7 +1906,15 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         bess_efficiency = 0.90
         grid_charging = bool(self.config_data.get("bess_grid_charging", False))
         tariff_model = self.config_data.get("bess_tariff_model", "tou")
-        sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
+        enable_solar_sellback = bool(self.config_data.get(CONF_ENABLE_SOLAR_SELLBACK, DEFAULT_ENABLE_SOLAR_SELLBACK))
+        bess_solar_sellback_active = bool(
+            self.config_data.get(
+                CONF_BESS_SOLAR_SELLBACK_ACTIVE,
+                self.config_data.get("bess_solar_sellback_active", enable_solar_sellback)
+            )
+        )
+        configured_sellback_rate = float(self.config_data.get(CONF_SOLAR_SELLBACK_RATE, DEFAULT_SOLAR_SELLBACK))
+        bess_sellback_rate = configured_sellback_rate if bess_solar_sellback_active else 0.0
         category = self.active_tariff_category
         
         peak_rate = self.active_tou_peak_rate
@@ -1918,7 +1942,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 import_kwh=import_kwh,
                 bess_capacity=bess_capacity,
                 bess_efficiency=bess_efficiency,
-                sellback_rate=sellback_rate,
+                sellback_rate=bess_sellback_rate,
                 peak_rate=peak_rate,
                 offpeak_rate=offpeak_rate,
                 ft_rate=ft_rate,

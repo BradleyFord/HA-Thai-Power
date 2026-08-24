@@ -276,6 +276,51 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         self.assertAlmostEqual(projected_monthly_solar_revenue_thb, 220.0, places=2)
         self.assertAlmostEqual(projected_monthly_total_solar_benefit_thb, 1920.0, places=2)
 
+    def test_solar_sellback_disabled_zero_revenue(self) -> None:
+        """Test solar financial benefit when solar sellback contract is disabled."""
+        export_kwh = 80.0
+        self_consumption_kwh = 150.0
+        marginal_rate = 4.4217
+        enable_solar_sellback = False
+        sellback_rate = DEFAULT_SOLAR_SELLBACK if enable_solar_sellback else 0.0
+
+        solar_savings = self_consumption_kwh * marginal_rate
+        solar_revenue = export_kwh * sellback_rate
+        total_benefit = solar_savings + solar_revenue
+
+        self.assertEqual(solar_revenue, 0.0)
+        self.assertEqual(total_benefit, solar_savings)
+        self.assertAlmostEqual(solar_savings, 663.255, places=3)
+
+    def test_bess_solar_arbitrage_with_and_without_sellback(self) -> None:
+        """Test BESS daily savings comparison with active buy-back contract vs unmonetized export."""
+        # 5 kWh battery, 90% efficiency, TOU 1.3.2 (Peak: 5.7982, Ft: 0.3950, VAT: 7%)
+        bess_capacity = 5.0
+        bess_efficiency = 0.90
+        peak_rate = 5.7982
+        ft_rate = 0.3950
+        vat_mult = 1.07
+        peak_cost_kwh = (peak_rate + ft_rate) * vat_mult  # ~6.6267 THB/kWh
+
+        export_kwh = 10.0  # Surplus solar available
+        solar_charged = min(export_kwh, bess_capacity)  # 5 kWh
+        discharged = solar_charged * bess_efficiency     # 4.5 kWh
+        benefit = discharged * peak_cost_kwh             # 4.5 * 6.6267 = ~29.82 THB
+
+        # Case 1: Sellback active (฿2.20 buyback contract)
+        sellback_rate_active = 2.20
+        charge_cost_active = solar_charged * sellback_rate_active  # 5 * 2.20 = 11.00 THB
+        savings_with_sellback = benefit - charge_cost_active       # 29.82 - 11.00 = ~18.82 THB
+
+        # Case 2: No sellback contract (฿0.00 / disabled)
+        sellback_rate_disabled = 0.0
+        charge_cost_disabled = solar_charged * sellback_rate_disabled  # 0.00 THB
+        savings_without_sellback = benefit - charge_cost_disabled     # 29.82 THB (maximum arbitrage!)
+
+        self.assertAlmostEqual(savings_with_sellback, 18.8202, places=3)
+        self.assertAlmostEqual(savings_without_sellback, 29.8202, places=3)
+        self.assertGreater(savings_without_sellback, savings_with_sellback)
+
 
 if __name__ == "__main__":
     unittest.main()
