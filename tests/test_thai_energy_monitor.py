@@ -360,7 +360,29 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         final_months = sorted(monthly_sim.keys())[-12:]
         self.assertEqual(len(final_months), 12)
 
+    def test_solcast_multi_day_forward_projection(self) -> None:
+        """Test multi-day forward Solcast projection calculation for remaining billing days."""
+        accrued_solar_kwh = 350.0
+        current_cycle_day = 10
+        remaining_days = 30 - current_cycle_day  # 20 days
+
+        # 6 forward days available from Solcast
+        forward_solcast_days = [37.5, 37.0, 33.5, 35.0, 36.0, 35.5]
+        avg_solcast = sum(forward_solcast_days) / len(forward_solcast_days)
+
+        solcast_remaining_forecast = 0.0
+        for r_idx in range(remaining_days):
+            if r_idx < len(forward_solcast_days):
+                solcast_remaining_forecast += forward_solcast_days[r_idx]
+            else:
+                solcast_remaining_forecast += avg_solcast
+
+        projected_monthly_solar_kwh = accrued_solar_kwh + solcast_remaining_forecast
+        self.assertAlmostEqual(solcast_remaining_forecast, 715.0, places=2)
+        self.assertAlmostEqual(projected_monthly_solar_kwh, 1065.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

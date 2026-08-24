@@ -1342,7 +1342,48 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
 
         # 3. Project 30-day monthly solar generation, export, savings, and bill without solar
-        projected_monthly_solar_kwh = (self.monthly_solar_kwh / elapsed_days_fraction) * 30.0
+        # Check if live multi-day Solcast forecast sensors are available in Home Assistant
+        solcast_remaining_forecast_kwh = 0.0
+        solcast_found = False
+        if hasattr(self, "hass") and self.hass and hasattr(self.hass, "states"):
+            forward_days: list[float] = []
+            for d_idx in range(2, 8):
+                sensor_patterns = [
+                    f"sensor.solcast_pv_forecast_forecast_day_{d_idx}",
+                    f"sensor.solcast_forecast_day_{d_idx}",
+                ]
+                if d_idx == 2:
+                    sensor_patterns.extend([
+                        "sensor.solcast_pv_forecast_forecast_tomorrow",
+                        "sensor.solcast_forecast_tomorrow",
+                    ])
+                for sp in sensor_patterns:
+                    st = self.hass.states.get(sp)
+                    if st and st.state not in (None, "unavailable", "unknown"):
+                        try:
+                            val = float(st.state)
+                            if val >= 0:
+                                forward_days.append(val)
+                                solcast_found = True
+                                break
+                        except (ValueError, TypeError):
+                            pass
+
+            if solcast_found and forward_days:
+                current_cycle_day = min(30, max(1, int(elapsed_days_fraction)))
+                remaining_days = max(0, 30 - current_cycle_day)
+                avg_solcast = sum(forward_days) / len(forward_days)
+                for r_idx in range(remaining_days):
+                    if r_idx < len(forward_days):
+                        solcast_remaining_forecast_kwh += forward_days[r_idx]
+                    else:
+                        solcast_remaining_forecast_kwh += avg_solcast
+
+        if solcast_found and solcast_remaining_forecast_kwh > 0:
+            projected_monthly_solar_kwh = self.monthly_solar_kwh + solcast_remaining_forecast_kwh
+        else:
+            projected_monthly_solar_kwh = (self.monthly_solar_kwh / elapsed_days_fraction) * 30.0
+
         projected_monthly_export_kwh = (self.monthly_export_kwh / elapsed_days_fraction) * 30.0
         projected_monthly_self_consumption_kwh = max(
             0.0, projected_monthly_solar_kwh - projected_monthly_export_kwh

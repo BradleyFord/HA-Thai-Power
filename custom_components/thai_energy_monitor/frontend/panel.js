@@ -79,11 +79,20 @@
       lifetime_grid_export_revenue: "Lifetime Grid Export Revenue",
       solcast_title: "Solcast PV Forecast Integration",
       solcast_status: "Solcast Integration Status",
-      solcast_integrated: "Solcast Integrated",
+      solcast_integrated: "Solcast Integrated (7-Day Active)",
       solcast_simulated: "Simulated Solcast Baseline",
       estimated_gen_today: "Estimated Generation Today",
       estimated_rem_today: "Estimated Remaining Today",
       current_estimated_power: "Current Estimated Power Output",
+      solcast_7day_title: "7-Day Forward Solar Production Forecast",
+      solcast_7day_total_expected: "7-Day Total Expected Yield",
+      solcast_avg_daily_yield: "Daily Average Yield",
+      solcast_peak_today: "Peak Solar Forecast Today",
+      solcast_peak_tomorrow: "Peak Solar Forecast Tomorrow",
+      solcast_api_quota: "API Calls Used Today",
+      solcast_weather_adjusted: "Weather-adjusted satellite solar yield expectations from Solcast",
+      day_today: "Today",
+      day_tomorrow: "Tomorrow",
       solar_performance_trends: "Billing Month Solar Performance Trends",
       legend_solcast_forecast: "1. Solcast PV Forecast",
       legend_actual_solar_prod: "2. Actual Solar Production",
@@ -274,11 +283,20 @@
       lifetime_grid_export_revenue: "รายได้สะสมตลอดการใช้งาน",
       solcast_title: "การพยากรณ์แสงอาทิตย์ (Solcast)",
       solcast_status: "สถานะการเชื่อมต่อ Solcast",
-      solcast_integrated: "เชื่อมต่อ Solcast แล้ว",
+      solcast_integrated: "เชื่อมต่อ Solcast แล้ว (ข้อมูลสด 7 วัน)",
       solcast_simulated: "ข้อมูลจำลองพื้นฐาน",
       estimated_gen_today: "ประมาณการผลิตวันนี้",
       estimated_rem_today: "ประมาณการผลิตที่เหลือของวันนี้",
       current_estimated_power: "กำลังผลิตโดยประมาณขณะนี้",
+      solcast_7day_title: "พยากรณ์ผลผลิตโซลาร์ 7 วันล่วงหน้า",
+      solcast_7day_total_expected: "รวมผลผลิตที่คาดการณ์ 7 วัน",
+      solcast_avg_daily_yield: "เฉลี่ยต่อวัน",
+      solcast_peak_today: "กำลังผลิตสูงสุดคาดการณ์วันนี้",
+      solcast_peak_tomorrow: "กำลังผลิตสูงสุดคาดการณ์พรุ่งนี้",
+      solcast_api_quota: "การเรียกใช้งาน API วันนี้",
+      solcast_weather_adjusted: "พยากรณ์คำนวณจากดาวเทียมและสภาพอากาศโดย Solcast",
+      day_today: "วันนี้",
+      day_tomorrow: "พรุ่งนี้",
       solar_performance_trends: "แนวโน้มการผลิตและใช้งานโซลาร์ตลอดรอบบิล",
       legend_solcast_forecast: "1. พยากรณ์ Solcast PV",
       legend_actual_solar_prod: "2. หน่วยผลิตจริงจากโซลาร์",
@@ -576,23 +594,61 @@
       return fallback;
     };
 
-    // Solcast PV Forecast Entity Search
+    // Solcast PV Forecast Entity Search & Multi-Day Forward Forecast Array
     let solcastForecastToday = '0.00';
+    let solcastForecastTomorrow = '0.00';
+    let solcastForecastDay3 = '0.00';
+    let solcastForecastDay4 = '0.00';
+    let solcastForecastDay5 = '0.00';
+    let solcastForecastDay6 = '0.00';
+    let solcastForecastDay7 = '0.00';
     let solcastPowerNow = '0.00';
     let solcastForecastRemaining = '0.00';
+    let solcastPeakToday = '';
+    let solcastPeakTomorrow = '';
+    let solcastPeakTimeToday = '';
+    let solcastPeakTimeTomorrow = '';
+    let solcastApiUsed = '';
+    let solcastApiLimit = '';
     let solcastEntityFound = false;
     let solcastPowerUnit = 'kW';
 
     for (const entityId in states) {
-      if (entityId.includes('solcast')) {
+      const lowerId = entityId.toLowerCase();
+      if (lowerId.includes('solcast')) {
         solcastEntityFound = true;
-        if (entityId.includes('remaining')) {
-          solcastForecastRemaining = states[entityId].state;
-        } else if (entityId.includes('today')) {
-          solcastForecastToday = states[entityId].state;
-        } else if (entityId.includes('now')) {
-          solcastPowerNow = states[entityId].state;
+        const st = states[entityId].state;
+        if (lowerId.includes('forecast_remaining_today') || (lowerId.includes('remaining') && lowerId.includes('today'))) {
+          solcastForecastRemaining = st;
+        } else if (lowerId.includes('forecast_tomorrow') || lowerId.includes('day_2') || lowerId.includes('day2')) {
+          solcastForecastTomorrow = st;
+        } else if (lowerId.includes('forecast_day_3') || lowerId.includes('day3')) {
+          solcastForecastDay3 = st;
+        } else if (lowerId.includes('forecast_day_4') || lowerId.includes('day4')) {
+          solcastForecastDay4 = st;
+        } else if (lowerId.includes('forecast_day_5') || lowerId.includes('day5')) {
+          solcastForecastDay5 = st;
+        } else if (lowerId.includes('forecast_day_6') || lowerId.includes('day6')) {
+          solcastForecastDay6 = st;
+        } else if (lowerId.includes('forecast_day_7') || lowerId.includes('day7')) {
+          solcastForecastDay7 = st;
+        } else if (lowerId.includes('forecast_today') || (lowerId.includes('today') && !lowerId.includes('peak') && !lowerId.includes('remaining') && !lowerId.includes('hour'))) {
+          solcastForecastToday = st;
+        } else if (lowerId.includes('power_now') || (lowerId.includes('power') && lowerId.includes('now'))) {
+          solcastPowerNow = st;
           solcastPowerUnit = states[entityId].attributes?.unit_of_measurement || 'kW';
+        } else if (lowerId.includes('peak_forecast_today')) {
+          solcastPeakToday = st;
+        } else if (lowerId.includes('peak_forecast_tomorrow')) {
+          solcastPeakTomorrow = st;
+        } else if (lowerId.includes('peak_time_today')) {
+          solcastPeakTimeToday = st;
+        } else if (lowerId.includes('peak_time_tomorrow')) {
+          solcastPeakTimeTomorrow = st;
+        } else if (lowerId.includes('api_used')) {
+          solcastApiUsed = st;
+        } else if (lowerId.includes('api_limit')) {
+          solcastApiLimit = st;
         }
       }
     }
@@ -603,6 +659,44 @@
       solcastPowerNowNum = solcastPowerNowNum / 1000.0;
       solcastPowerUnit = 'kW';
     }
+
+    // Build structured 7-Day Solcast Forecast Array
+    const todayDate = new Date();
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const raw7DayForecast = [
+      parseFloat(solcastForecastToday) || 0,
+      parseFloat(solcastForecastTomorrow) || 0,
+      parseFloat(solcastForecastDay3) || 0,
+      parseFloat(solcastForecastDay4) || 0,
+      parseFloat(solcastForecastDay5) || 0,
+      parseFloat(solcastForecastDay6) || 0,
+      parseFloat(solcastForecastDay7) || 0,
+    ];
+
+    const solcast7DayForecast = raw7DayForecast.map((kwh, idx) => {
+      const targetDate = new Date(todayDate);
+      targetDate.setDate(todayDate.getDate() + idx);
+      const dayName = dayNames[targetDate.getDay()];
+      const dateNum = targetDate.getDate();
+      const monthName = monthNames[targetDate.getMonth()];
+      const label = idx === 0 ? 'Today' : (idx === 1 ? 'Tomorrow' : `${dayName} ${dateNum}`);
+      const fullDateStr = `${monthName} ${dateNum}`;
+      return {
+        dayOffset: idx,
+        label: label,
+        fullDateStr: fullDateStr,
+        kwh: kwh,
+        dayNum: dateNum,
+        isToday: idx === 0,
+      };
+    });
+
+    const total7DayKwh = raw7DayForecast.reduce((acc, v) => acc + v, 0);
+    const validForecasts = raw7DayForecast.filter(v => v > 0);
+    const avg7DayKwh = validForecasts.length > 0 ? (total7DayKwh / validForecasts.length) : (parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 35.0);
+    const max7DayKwh = Math.max(...raw7DayForecast, 1.0);
 
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
@@ -888,16 +982,35 @@
       });
     }
 
-    // Generate 30-Day Solar Multi-Trend Data from Python Historical Arrays
-    const solcastTargetKwh = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 35.0;
-
+    // Generate 30-Day Solar Multi-Trend Data using dynamic Solcast 7-day weather forecast
     const solarMonthlyTrends = [];
     for (let day = 1; day <= 30; day++) {
       const isPastOrToday = day <= currentDay;
-      const solcastVal = solcastTargetKwh;
+      let solcastVal = avg7DayKwh > 0 ? avg7DayKwh : 35.0;
+
+      if (day === currentDay) {
+        // Today's forecast from Solcast
+        solcastVal = parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : solcastVal;
+      } else if (day > currentDay) {
+        // Upcoming future days: map into Solcast 7-day forward weather forecast array
+        const offset = day - currentDay;
+        if (offset < raw7DayForecast.length && raw7DayForecast[offset] > 0) {
+          solcastVal = raw7DayForecast[offset];
+        } else {
+          solcastVal = avg7DayKwh > 0 ? avg7DayKwh : 35.0;
+        }
+      } else {
+        // Past days in billing cycle: use historical actual solar production as benchmark or average
+        const rawPastProd = pySolarHistory[day - 1];
+        if (rawPastProd !== undefined && rawPastProd !== null && parseFloat(rawPastProd) > 0.001) {
+          solcastVal = parseFloat(rawPastProd);
+        } else {
+          solcastVal = avg7DayKwh > 0 ? avg7DayKwh : 35.0;
+        }
+      }
 
       const rawProd = pySolarHistory[day - 1];
-      const prodVal = (rawProd !== undefined && rawProd !== null && parseFloat(rawProd) > 0.001) ? parseFloat(rawProd) : avgDailySolar;
+      const prodVal = (rawProd !== undefined && rawProd !== null && parseFloat(rawProd) > 0.001) ? parseFloat(rawProd) : ((isPastOrToday && day === currentDay) ? parseFloat(solarKwh) : (isPastOrToday ? avgDailySolar : 0));
       const rawExp = pyExportHistory[day - 1];
       const exportVal = (rawExp !== undefined && rawExp !== null && parseFloat(rawExp) >= 0) ? parseFloat(rawExp) : (exportKwhNum > 0 ? avgDailyExport : 0.0);
       const selfVal = Math.max(0, prodVal - exportVal);
@@ -1015,9 +1128,25 @@
       meaEpaymentActive: getAttribute(billEntityId, 'mea_epayment_active') === true || String(getAttribute(billEntityId, 'mea_epayment_active')).toLowerCase() === 'true',
       solcastEntityFound: solcastEntityFound,
       solcastForecastToday: parseFloat(solcastForecastToday || 0).toFixed(2),
+      solcastForecastTomorrow: parseFloat(solcastForecastTomorrow || 0).toFixed(2),
+      solcastForecastDay3: parseFloat(solcastForecastDay3 || 0).toFixed(2),
+      solcastForecastDay4: parseFloat(solcastForecastDay4 || 0).toFixed(2),
+      solcastForecastDay5: parseFloat(solcastForecastDay5 || 0).toFixed(2),
+      solcastForecastDay6: parseFloat(solcastForecastDay6 || 0).toFixed(2),
+      solcastForecastDay7: parseFloat(solcastForecastDay7 || 0).toFixed(2),
       solcastPowerNow: solcastPowerNowNum.toFixed(2),
       solcastPowerNowUnit: solcastPowerUnit,
       solcastForecastRemaining: parseFloat(solcastForecastRemaining || 0).toFixed(2),
+      solcastPeakToday: solcastPeakToday ? (parseFloat(solcastPeakToday) > 1000 ? (parseFloat(solcastPeakToday) / 1000).toFixed(2) + ' kW' : parseFloat(solcastPeakToday).toFixed(0) + ' W') : '',
+      solcastPeakTomorrow: solcastPeakTomorrow ? (parseFloat(solcastPeakTomorrow) > 1000 ? (parseFloat(solcastPeakTomorrow) / 1000).toFixed(2) + ' kW' : parseFloat(solcastPeakTomorrow).toFixed(0) + ' W') : '',
+      solcastPeakTimeToday: solcastPeakTimeToday ? solcastPeakTimeToday.replace(/:\d{2}\+\d{2}:\d{2}$/, '').replace('T', ' ') : '',
+      solcastPeakTimeTomorrow: solcastPeakTimeTomorrow ? solcastPeakTimeTomorrow.replace(/:\d{2}\+\d{2}:\d{2}$/, '').replace('T', ' ') : '',
+      solcastApiUsed: solcastApiUsed,
+      solcastApiLimit: solcastApiLimit,
+      solcast7DayForecast: solcast7DayForecast,
+      solcastTotal7DayKwh: total7DayKwh.toFixed(1),
+      solcastAvg7DayKwh: avg7DayKwh.toFixed(1),
+      solcastMax7DayKwh: max7DayKwh,
 
       customPeakRate: getAttribute(billEntityId, 'custom_peak_rate') || '',
       customOffpeakRate: getAttribute(billEntityId, 'custom_offpeak_rate') || '',
@@ -1558,9 +1687,10 @@
 
     // Dynamic updates for Solcast Card
     setHtml('val-solcast-today-main', `${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span>`);
-    setText('val-solcast-today', `${d.solcastForecastToday} kWh`);
     setText('val-solcast-remaining', `${d.solcastForecastRemaining} kWh`);
     setText('val-solcast-power', `${d.solcastPowerNow} ${d.solcastPowerNowUnit}`);
+    if (d.solcastPeakToday) setText('val-solcast-peak-today', d.solcastPeakToday);
+    if (d.solcastApiUsed && d.solcastApiLimit) setText('val-solcast-api-quota', `${d.solcastApiUsed} / ${d.solcastApiLimit}`);
   }
 
   _initialRender() {
@@ -2193,6 +2323,78 @@
           line-height: 1.4;
         }
 
+        /* 7-Day Solcast Forecast Grid */
+        .solcast-7day-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+          gap: 12px;
+          margin-top: 16px;
+        }
+
+        .solcast-day-card {
+          background-color: var(--secondary-background-color, rgba(255,255,255,0.04));
+          border: 1px solid var(--divider-color, rgba(255,255,255,0.1));
+          border-radius: 10px;
+          padding: 14px 10px;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: space-between;
+          transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .solcast-day-card:hover {
+          border-color: var(--warning-color, #ff9800);
+          transform: translateY(-2px);
+        }
+
+        .solcast-day-card.today {
+          border-color: var(--warning-color, #ff9800);
+          background-color: rgba(255, 152, 0, 0.08);
+          box-shadow: 0 0 12px rgba(255, 152, 0, 0.15);
+        }
+
+        .solcast-day-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--secondary-text-color, #9e9e9e);
+          margin-bottom: 2px;
+        }
+
+        .solcast-day-card.today .solcast-day-title {
+          color: var(--warning-color, #ff9800);
+        }
+
+        .solcast-day-date {
+          font-size: 10px;
+          color: var(--secondary-text-color, #757575);
+          margin-bottom: 6px;
+        }
+
+        .solcast-day-kwh {
+          font-size: 16px;
+          font-weight: 700;
+          color: var(--primary-text-color, #ffffff);
+          margin-bottom: 6px;
+        }
+
+        .solcast-day-bar-bg {
+          width: 100%;
+          height: 5px;
+          border-radius: 3px;
+          background: rgba(255,255,255,0.1);
+          overflow: hidden;
+          margin-top: 4px;
+        }
+
+        .solcast-day-bar-fill {
+          height: 100%;
+          border-radius: 3px;
+          background: linear-gradient(90deg, #ff9800, #ffb74d);
+          transition: width 0.3s ease;
+        }
+
         .footer-note {
           margin-top: 32px;
           text-align: center;
@@ -2566,10 +2768,6 @@
                 <span class="val ${d.solcastEntityFound ? 'saving' : ''}">${d.solcastEntityFound ? this.t('solcast_integrated') : this.t('solcast_simulated')}</span>
               </div>
               <div class="row">
-                <span class="label">${this.t('estimated_gen_today')}</span>
-                <span class="val" id="val-solcast-today">${d.solcastForecastToday} kWh</span>
-              </div>
-              <div class="row">
                 <span class="label">${this.t('estimated_rem_today')}</span>
                 <span class="val" id="val-solcast-remaining">${d.solcastForecastRemaining} kWh</span>
               </div>
@@ -2577,6 +2775,47 @@
                 <span class="label">${this.t('current_estimated_power')}</span>
                 <span class="val" id="val-solcast-power">${d.solcastPowerNow} ${d.solcastPowerNowUnit}</span>
               </div>
+              ${d.solcastPeakToday ? `
+                <div class="row">
+                  <span class="label">${this.t('solcast_peak_today')}</span>
+                  <span class="val" id="val-solcast-peak-today">${d.solcastPeakToday}</span>
+                </div>
+              ` : ''}
+              ${d.solcastApiUsed && d.solcastApiLimit ? `
+                <div class="row">
+                  <span class="label">${this.t('solcast_api_quota')}</span>
+                  <span class="val" id="val-solcast-api-quota">${d.solcastApiUsed} / ${d.solcastApiLimit}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Full Width 7-Day Forward Solcast Forecast Grid Card -->
+          <div class="card full-width">
+            <h2>
+              <span>${this.t('solcast_7day_title')}</span>
+              <span style="font-size: 13px; font-weight: normal; color: var(--warning-color, #ff9800);">
+                ${this.t('solcast_7day_total_expected')}: <strong>${d.solcastTotal7DayKwh} kWh</strong> (${this.t('solcast_avg_daily_yield')}: ${d.solcastAvg7DayKwh} kWh/d)
+              </span>
+            </h2>
+            <div class="solcast-7day-grid">
+              ${d.solcast7DayForecast.map((f) => {
+                const barPct = d.solcastMax7DayKwh > 0 ? ((f.kwh / d.solcastMax7DayKwh) * 100).toFixed(0) : 50;
+                const labelText = f.isToday ? this.t('day_today') : (f.dayOffset === 1 ? this.t('day_tomorrow') : f.label);
+                return `
+                  <div class="solcast-day-card ${f.isToday ? 'today' : ''}">
+                    <div class="solcast-day-title">${labelText}</div>
+                    <div class="solcast-day-date">${f.fullDateStr}</div>
+                    <div class="solcast-day-kwh">${f.kwh.toFixed(1)} <span style="font-size:12px; font-weight:normal; color:#aaa;">kWh</span></div>
+                    <div class="solcast-day-bar-bg">
+                      <div class="solcast-day-bar-fill" style="width: ${barPct}%;"></div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div style="font-size: 11px; color: var(--secondary-text-color, #9e9e9e); margin-top: 12px;">
+              ☀️ ${this.t('solcast_weather_adjusted')}
             </div>
           </div>
 
