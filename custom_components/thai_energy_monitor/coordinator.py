@@ -1738,7 +1738,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
         VAT_RATE = 0.07
 
-        for month_key in sorted(monthly_groups.keys()):
+        # Enforce strictly the most recent 12 billing months
+        for month_key in sorted(monthly_groups.keys())[-12:]:
             stats = monthly_groups[month_key]
             total_kwh = stats["total"]
             peak_kwh = stats["peak"]
@@ -1943,9 +1944,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             monthly_bess_sim[month_key]["shifted_kwh"] += shifted_kwh
             monthly_bess_sim[month_key]["savings_thb"] += day_savings
 
-        # Convert to final list
+        # Convert to final list (strictly the most recent 12 billing months)
         bess_lookback_data = []
-        for month_key in sorted(monthly_bess_sim.keys()):
+        for month_key in sorted(monthly_bess_sim.keys())[-12:]:
             stats = monthly_bess_sim[month_key]
             bess_lookback_data.append({
                 "month": month_key,

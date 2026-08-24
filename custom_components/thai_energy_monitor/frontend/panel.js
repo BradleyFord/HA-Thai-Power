@@ -183,7 +183,14 @@
       tt_solcast_forecast: "Solcast PV Forecast:",
       tt_self_consumption: "Internal Self-Consumption:",
       tt_surplus_export: "Grid Export:",
-      tt_forecast_accuracy: "Forecast Ratio:"
+      tt_forecast_accuracy: "Forecast Ratio:",
+
+      current_cycle_tariff_comparison: "Current Cycle Tariff Comparison",
+      current_registered_tariff: "Current Registered Tariff",
+      opposing_comparison_model: "Opposing Comparison Model",
+      optimized_tariff_recommendation: "Optimized Tariff Recommendation",
+      stay_on_tariff: "Stay on Tariff",
+      switch_to_tariff: "Switch to"
     },
 
     th: {
@@ -354,7 +361,14 @@
       tt_solcast_forecast: "พยากรณ์ Solcast:",
       tt_self_consumption: "ใช้เองในบ้าน:",
       tt_surplus_export: "ส่งออกขายคืน:",
-      tt_forecast_accuracy: "ความแม่นยำพยากรณ์:"
+      tt_forecast_accuracy: "ความแม่นยำพยากรณ์:",
+
+      current_cycle_tariff_comparison: "เปรียบเทียบอัตราค่าไฟรอบบิลปัจจุบัน",
+      current_registered_tariff: "อัตราค่าไฟที่ใช้งานปัจจุบัน",
+      opposing_comparison_model: "อัตราเปรียบเทียบ",
+      optimized_tariff_recommendation: "คำแนะนำอัตราค่าไฟที่คุ้มค่าที่สุด",
+      stay_on_tariff: "ใช้อัตราเดิมต่อไป",
+      switch_to_tariff: "ควรเปลี่ยนเป็น"
     }
   };
 
@@ -2731,22 +2745,22 @@
             `}
           </div>
 
-          <!-- Existing Tariff details cards -->
+          <!-- Current Cycle Real-Time Tariff Arbitrage Comparison Card -->
           <div class="card">
-            <h2>${this.t('tariff_optimizer_title')}</h2>
+            <h2>${this.t('current_cycle_tariff_comparison')}</h2>
             <div class="metric-main ${diffClass}">${diffText}</div>
             <div class="table-rows">
               <div class="row">
-                <span class="label">Current Registered Tariff</span>
+                <span class="label">${this.t('current_registered_tariff')}</span>
                 <span class="val">Tariff ${d.tariffCategory}</span>
               </div>
               <div class="row">
-                <span class="label">Opposing Comparison Model</span>
+                <span class="label">${this.t('opposing_comparison_model')}</span>
                 <span class="val">${d.opposingTariffName}</span>
               </div>
               <div class="row">
-                <span class="label">Optimized Tariff Recommendation</span>
-                <span class="val ${diffClass}">${diffVal >= 0 ? 'Stay on Tariff ' + d.tariffCategory : 'Switch to ' + d.opposingTariffName}</span>
+                <span class="label">${this.t('optimized_tariff_recommendation')}</span>
+                <span class="val ${diffClass}">${diffVal >= 0 ? `${this.t('stay_on_tariff')} ${d.tariffCategory}` : `${this.t('switch_to_tariff')} ${d.opposingTariffName}`}</span>
               </div>
             </div>
           </div>
@@ -2929,7 +2943,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.8 &bull; Home Assistant Custom Integration
       </div>
     `;
 
