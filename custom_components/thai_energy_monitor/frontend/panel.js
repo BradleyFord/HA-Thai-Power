@@ -589,6 +589,43 @@
     this._initialRender();
   }
 
+  _showTooltip(html, clientX, clientY) {
+    const tooltip = this.shadowRoot.getElementById('chart-tooltip');
+    if (!tooltip) return;
+    const hostRect = this.shadowRoot.host.getBoundingClientRect();
+    let left = clientX - hostRect.left;
+    let top = clientY - hostRect.top - 12;
+
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    tooltip.style.opacity = '1';
+
+    // Clamp within host bounds
+    const ttRect = tooltip.getBoundingClientRect();
+    if (left - ttRect.width / 2 < 10) {
+      left = ttRect.width / 2 + 10;
+    } else if (left + ttRect.width / 2 > hostRect.width - 10) {
+      left = hostRect.width - ttRect.width / 2 - 10;
+    }
+    if (top - ttRect.height < 10) {
+      top = clientY - hostRect.top + 24;
+      tooltip.style.transform = 'translate(-50%, 0)';
+    } else {
+      tooltip.style.transform = 'translate(-50%, -100%)';
+    }
+
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  _hideTooltip() {
+    const tooltip = this.shadowRoot.getElementById('chart-tooltip');
+    if (tooltip) {
+      tooltip.style.display = 'none';
+      tooltip.style.opacity = '0';
+    }
+  }
+
   _attachTabEvents() {
     const shadow = this.shadowRoot;
     const tabBtns = shadow.querySelectorAll('.tab-btn');
@@ -609,6 +646,194 @@
           this._dailyChartMode = mode;
           this._initialRender();
         }
+      });
+    });
+
+    // Tooltip Listeners: Cumulative Monthly Running Bill Progression (Chart 1)
+    const stackedCols = shadow.querySelectorAll('.stacked-col');
+    stackedCols.forEach((col) => {
+      const onMove = (e) => {
+        const dayIdx = parseInt(e.currentTarget.getAttribute('data-day-idx'), 10);
+        if (isNaN(dayIdx)) return;
+        const bar = this._data.monthlyDailyBars[dayIdx];
+        if (!bar) return;
+
+        const currentDay = this._data.currentDayOfCycle;
+        const statusLabel = bar.isWeekend
+          ? 'Weekend (100% Off-Peak)'
+          : (bar.isPastOrToday ? (bar.day === currentDay ? 'Today (Live)' : 'Past') : 'Projected');
+
+        const html = `
+          <div class="tt-title">
+            <span>Day ${bar.day}</span>
+            <span style="color: ${bar.isWeekend ? '#90caf9' : '#fff'}; font-weight: 500; font-size: 11px;">${statusLabel}</span>
+          </div>
+          <div class="tt-row"><span style="color:#bbb;">Cumulative Bill:</span><strong style="color:#4caf50;">฿${bar.total.toFixed(2)}</strong></div>
+          <div class="tt-row"><span style="color:#bbb;">Added on Day ${bar.day}:</span><strong style="color:var(--primary-color, #03a9f4);">+฿${(bar.dayPeakCost + bar.dayOffpeakCost).toFixed(2)}</strong></div>
+          <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 11px;">
+            ${this._data.isTou ? `
+              <div class="tt-row"><span><span class="tt-dot" style="background:#9e9e9e;"></span>Fixed Service:</span><span>฿${bar.service.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#1565c0;"></span>Peak Base Charge:</span><span>฿${bar.peak.toFixed(2)} (+฿${bar.dayPeakCost.toFixed(2)})</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#90caf9;"></span>Off-Peak Base Charge:</span><span>฿${bar.offpeak.toFixed(2)} (+฿${bar.dayOffpeakCost.toFixed(2)})</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#ff9800;"></span>Ft Charge:</span><span>฿${bar.ft.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#e91e63;"></span>Statutory VAT (7%):</span><span>฿${bar.vat.toFixed(2)}</span></div>
+            ` : `
+              <div class="tt-row"><span><span class="tt-dot" style="background:#9e9e9e;"></span>Fixed Service:</span><span>฿${bar.service.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#1976d2;"></span>Tier 1 (0-150):</span><span>฿${bar.tier1.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#2196f3;"></span>Tier 2 (151-400):</span><span>฿${bar.tier2.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#64b5f6;"></span>Tier 3 (>400):</span><span>฿${bar.tier3.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#ff9800;"></span>Ft Charge:</span><span>฿${bar.ft.toFixed(2)}</span></div>
+              <div class="tt-row"><span><span class="tt-dot" style="background:#e91e63;"></span>Statutory VAT (7%):</span><span>฿${bar.vat.toFixed(2)}</span></div>
+            `}
+          </div>
+        `;
+        this._showTooltip(html, e.clientX, e.clientY);
+      };
+
+      col.addEventListener('mouseenter', onMove);
+      col.addEventListener('mousemove', onMove);
+      col.addEventListener('mouseleave', () => {
+        this._hideTooltip();
+      });
+    });
+
+    // Tooltip Listeners: Daily Grid Import vs Solar Production (Chart 2)
+    const dailyHits = shadow.querySelectorAll('.daily-bar-hit');
+    dailyHits.forEach((hit) => {
+      const onMove = (e) => {
+        const dayIdx = parseInt(e.currentTarget.getAttribute('data-day-idx'), 10);
+        if (isNaN(dayIdx)) return;
+        const item = this._data.dailyBreakdown[dayIdx];
+        if (!item) return;
+        const currentDay = this._data.currentDayOfCycle;
+        const statusLabel = item.day === currentDay
+          ? 'Today (Live)'
+          : (item.day < currentDay ? 'Past Actual' : 'Projected Run-Rate');
+
+        const expKwh = this._data.solarMonthlyTrends[dayIdx]?.export || 0;
+        const selfKwh = Math.max(0, item.solarKwh - expKwh);
+
+        const html = `
+          <div class="tt-title">
+            <span>Day ${item.day}</span>
+            <span style="color: #bbb; font-weight: 500; font-size: 11px;">${statusLabel}</span>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#2196f3;"></span>Grid Import:</span>
+            <strong style="color:#2196f3;">${item.importKwh.toFixed(2)} kWh <span style="color:#aaa; font-weight:normal;">(฿${item.importCost.toFixed(2)})</span></strong>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#4caf50;"></span>Solar Production:</span>
+            <strong style="color:#4caf50;">${item.solarKwh.toFixed(2)} kWh <span style="color:#aaa; font-weight:normal;">(฿${item.solarBenefit.toFixed(2)})</span></strong>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#00e5ff;"></span>Self-Consumed:</span>
+            <span style="color:#00e5ff;">${selfKwh.toFixed(2)} kWh</span>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#e91e63;"></span>Grid Export:</span>
+            <span style="color:#e91e63;">${expKwh.toFixed(2)} kWh</span>
+          </div>
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 11px; color:#bbb;">
+            Net Grid Import: <strong style="color:#fff;">${Math.max(0, item.importKwh - expKwh).toFixed(2)} kWh</strong>
+          </div>
+        `;
+        this._showTooltip(html, e.clientX, e.clientY);
+      };
+
+      hit.addEventListener('mouseenter', onMove);
+      hit.addEventListener('mousemove', onMove);
+      hit.addEventListener('mouseleave', () => {
+        this._hideTooltip();
+      });
+    });
+
+    // Tooltip Listeners: Billing Month Solar Performance Trends (Chart 3)
+    const solarHits = shadow.querySelectorAll('.solar-trend-hit');
+    const solarCrosshair = shadow.getElementById('solar-crosshair');
+    const dotProd = shadow.getElementById('solar-dot-prod');
+    const dotSolcast = shadow.getElementById('solar-dot-solcast');
+    const dotSelf = shadow.getElementById('solar-dot-self');
+    const dotExport = shadow.getElementById('solar-dot-export');
+
+    solarHits.forEach((hit) => {
+      const onMove = (e) => {
+        const dayIdx = parseInt(e.currentTarget.getAttribute('data-day-idx'), 10);
+        if (isNaN(dayIdx)) return;
+        const t = this._data.solarMonthlyTrends[dayIdx];
+        if (!t) return;
+        const currentDay = this._data.currentDayOfCycle;
+        const statusLabel = t.day === currentDay
+          ? 'Today (Live)'
+          : (t.day < currentDay ? 'Historical' : 'Forecast Projected');
+
+        const perfPct = t.solcast > 0 ? ((t.production / t.solcast) * 100).toFixed(0) : 0;
+
+        // Position crosshair and dots
+        const xPos = parseFloat(e.currentTarget.getAttribute('data-x') || 0);
+        if (solarCrosshair) {
+          solarCrosshair.setAttribute('x1', xPos);
+          solarCrosshair.setAttribute('x2', xPos);
+          solarCrosshair.style.display = 'block';
+        }
+        if (dotProd) {
+          dotProd.setAttribute('cx', xPos);
+          dotProd.setAttribute('cy', e.currentTarget.getAttribute('data-y-prod'));
+          dotProd.style.display = 'block';
+        }
+        if (dotSolcast) {
+          dotSolcast.setAttribute('cx', xPos);
+          dotSolcast.setAttribute('cy', e.currentTarget.getAttribute('data-y-solcast'));
+          dotSolcast.style.display = 'block';
+        }
+        if (dotSelf) {
+          dotSelf.setAttribute('cx', xPos);
+          dotSelf.setAttribute('cy', e.currentTarget.getAttribute('data-y-self'));
+          dotSelf.style.display = 'block';
+        }
+        if (dotExport) {
+          dotExport.setAttribute('cx', xPos);
+          dotExport.setAttribute('cy', e.currentTarget.getAttribute('data-y-export'));
+          dotExport.style.display = 'block';
+        }
+
+        const html = `
+          <div class="tt-title">
+            <span>Day ${t.day}</span>
+            <span style="color: #bbb; font-weight: 500; font-size: 11px;">${statusLabel}</span>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#4caf50;"></span>Actual Solar Yield:</span>
+            <strong style="color:#4caf50;">${t.production.toFixed(2)} kWh</strong>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#ff9800;"></span>Solcast PV Forecast:</span>
+            <strong style="color:#ff9800;">${t.solcast.toFixed(2)} kWh</strong>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#00e5ff;"></span>Internal Self-Consumption:</span>
+            <strong style="color:#00e5ff;">${t.selfConsumption.toFixed(2)} kWh</strong>
+          </div>
+          <div class="tt-row">
+            <span><span class="tt-dot" style="background:#e91e63;"></span>Grid Export:</span>
+            <strong style="color:#e91e63;">${t.export.toFixed(2)} kWh</strong>
+          </div>
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 11px; color:#bbb;">
+            Forecast Ratio: <strong style="color:#fff;">${perfPct}% of theoretical max</strong>
+          </div>
+        `;
+        this._showTooltip(html, e.clientX, e.clientY);
+      };
+
+      hit.addEventListener('mouseenter', onMove);
+      hit.addEventListener('mousemove', onMove);
+      hit.addEventListener('mouseleave', () => {
+        this._hideTooltip();
+        if (solarCrosshair) solarCrosshair.style.display = 'none';
+        if (dotProd) dotProd.style.display = 'none';
+        if (dotSolcast) dotSolcast.style.display = 'none';
+        if (dotSelf) dotSelf.style.display = 'none';
+        if (dotExport) dotExport.style.display = 'none';
       });
     });
 
@@ -853,6 +1078,21 @@
     const pointsExportPast = getPointsSegment(d.solarMonthlyTrends, 'export', 0, currentDay - 1);
     const pointsExportFuture = getPointsSegment(d.solarMonthlyTrends, 'export', currentDay - 1, 29);
 
+    // Interactive Hit Slices for Solar Trends Line Chart (Chart 3)
+    const solarHitSlicesHtml = d.solarMonthlyTrends.map((t, idx) => {
+      const xCenter = parseFloat(getX(idx));
+      const xLeft = Math.max(0, xCenter - (stepX / 2)).toFixed(1);
+      const width = stepX.toFixed(1);
+      const yProd = getY(t.production);
+      const ySolcast = getY(t.solcast);
+      const ySelf = getY(t.selfConsumption);
+      const yExport = getY(t.export);
+
+      return `
+        <rect class="solar-trend-hit" data-day-idx="${idx}" data-x="${xCenter}" data-y-prod="${yProd}" data-y-solcast="${ySolcast}" data-y-self="${ySelf}" data-y-export="${yExport}" x="${xLeft}" y="0" width="${width}" height="${svgH}" fill="transparent" style="cursor: crosshair;"></rect>
+      `;
+    }).join('');
+
     // Daily Side-by-Side Bar Chart Calculations (Volume/Value Mode)
     const mode = this._dailyChartMode;
     const dailyData = d.dailyBreakdown;
@@ -887,19 +1127,16 @@
       const hSol = getDailyColHeight(valSol);
 
       const opacity = item.isPastOrToday ? '1.0' : '0.4';
-      const unitStr = mode === 'kwh' ? ' kWh' : ' THB';
-      const prefixStr = mode === 'thb' ? '฿' : '';
 
       return `
         <!-- Import Column (Blue) -->
-        <rect x="${xImp}" y="${yImp}" width="${colW}" height="${hImp}" fill="#2196f3" rx="2" opacity="${opacity}">
-          <title>Day ${item.day}: Grid Import ${prefixStr}${valImp.toFixed(2)}${unitStr}</title>
-        </rect>
+        <rect id="daily-bar-imp-${idx}" x="${xImp}" y="${yImp}" width="${colW}" height="${hImp}" fill="#2196f3" rx="2" opacity="${opacity}"></rect>
         
         <!-- Solar Column (Green) -->
-        <rect x="${xSol}" y="${ySol}" width="${colW}" height="${hSol}" fill="#4caf50" rx="2" opacity="${opacity}">
-          <title>Day ${item.day}: Solar Yield ${prefixStr}${valSol.toFixed(2)}${unitStr}</title>
-        </rect>
+        <rect id="daily-bar-sol-${idx}" x="${xSol}" y="${ySol}" width="${colW}" height="${hSol}" fill="#4caf50" rx="2" opacity="${opacity}"></rect>
+
+        <!-- Interactive Day Hit Slice -->
+        <rect class="daily-bar-hit" data-day-idx="${idx}" x="${xStart.toFixed(1)}" y="0" width="${colStepX.toFixed(1)}" height="${dailySvgH}" fill="transparent" style="cursor: pointer;"></rect>
       `;
     }).join('');
 
@@ -1225,6 +1462,13 @@
           justify-content: flex-start;
           align-items: center;
           position: relative;
+          cursor: pointer;
+          transition: filter 0.15s ease, transform 0.15s ease;
+        }
+
+        .stacked-col:hover {
+          filter: brightness(1.25);
+          transform: scaleY(1.02);
         }
 
         .bar-piece {
@@ -1254,6 +1498,57 @@
           right: 0;
           font-size: 10px;
           color: var(--secondary-text-color, #9e9e9e);
+        }
+
+        /* Floating Interactive Tooltip */
+        .floating-tooltip {
+          position: absolute;
+          display: none;
+          pointer-events: none;
+          z-index: 99999;
+          background: rgba(18, 18, 22, 0.96);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 8px;
+          padding: 10px 14px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          font-size: 12px;
+          line-height: 1.45;
+          color: #ffffff;
+          white-space: nowrap;
+          transition: opacity 0.1s ease;
+          transform: translate(-50%, -100%);
+        }
+
+        .floating-tooltip .tt-title {
+          font-weight: 600;
+          font-size: 13px;
+          margin-bottom: 6px;
+          padding-bottom: 4px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .floating-tooltip .tt-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 2px 0;
+        }
+
+        .floating-tooltip .tt-dot {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          margin-right: 6px;
+        }
+
+        .daily-bar-hit:hover ~ rect {
+          filter: brightness(1.25);
         }
 
         .note-box {
@@ -1316,6 +1611,9 @@
           padding-bottom: 4px;
         }
       </style>
+
+      <!-- Floating Interactive Chart Tooltip -->
+      <div id="chart-tooltip" class="floating-tooltip"></div>
 
       <div class="header">
         <div>
@@ -1450,7 +1748,7 @@
                     const pPct = ((bar.peak / maxDayTotal) * 100).toFixed(1);
                     const opPct = ((bar.offpeak / maxDayTotal) * 100).toFixed(1);
                     return `
-                      <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day} (${bar.isWeekend ? 'Weekend: 100% Off-Peak' : 'Weekday'}): Cumulative ฿${bar.total.toFixed(2)} | Today Added: +฿${(bar.dayPeakCost + bar.dayOffpeakCost).toFixed(2)} (Peak: +฿${bar.dayPeakCost.toFixed(2)}, Off-Peak: +฿${bar.dayOffpeakCost.toFixed(2)})">
+                      <div class="stacked-col" data-day-idx="${bar.day - 1}" style="opacity: ${opacity};">
                         <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
                         <div class="bar-piece seg-peak" style="height: ${pPct}%;"></div>
                         <div class="bar-piece seg-offpeak" style="height: ${opPct}%;"></div>
@@ -1464,7 +1762,7 @@
                     const t2Pct = ((bar.tier2 / maxDayTotal) * 100).toFixed(1);
                     const t3Pct = ((bar.tier3 / maxDayTotal) * 100).toFixed(1);
                     return `
-                      <div class="stacked-col" style="opacity: ${opacity};" title="Day ${bar.day}: Cumulative ฿${bar.total.toFixed(2)} (Service: ฿${bar.service.toFixed(2)}, Tier 1: ฿${bar.tier1.toFixed(2)}, Tier 2: ฿${bar.tier2.toFixed(2)}, Tier 3: ฿${bar.tier3.toFixed(2)}, Ft: ฿${bar.ft.toFixed(2)}, VAT: ฿${bar.vat.toFixed(2)})">
+                      <div class="stacked-col" data-day-idx="${bar.day - 1}" style="opacity: ${opacity};">
                         <div class="bar-piece seg-service" style="height: ${sPct}%;"></div>
                         <div class="bar-piece seg-tier1" style="height: ${t1Pct}%;"></div>
                         <div class="bar-piece seg-tier2" style="height: ${t2Pct}%;"></div>
@@ -1659,6 +1957,16 @@
                   <!-- Trend 4: Grid Export (Past - Solid Orange/Pink, Future - Dashed) -->
                   ${pointsExportPast ? `<polyline points="${pointsExportPast}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" />` : ''}
                   ${pointsExportFuture ? `<polyline points="${pointsExportFuture}" fill="none" stroke="var(--accent-color, #e91e63)" stroke-width="1.8" stroke-dasharray="4,4" opacity="0.4" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+
+                  <!-- Dynamic Interactive Crosshair Hairline & Tracking Dots -->
+                  <line id="solar-crosshair" x1="0" y1="0" x2="0" y2="${svgH}" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-dasharray="3,3" style="display:none; pointer-events:none;"></line>
+                  <circle id="solar-dot-solcast" r="4" fill="#ff9800" stroke="#ffffff" stroke-width="1.5" style="display:none; pointer-events:none;"></circle>
+                  <circle id="solar-dot-prod" r="4" fill="#4caf50" stroke="#ffffff" stroke-width="1.5" style="display:none; pointer-events:none;"></circle>
+                  <circle id="solar-dot-self" r="4" fill="#00e5ff" stroke="#ffffff" stroke-width="1.5" style="display:none; pointer-events:none;"></circle>
+                  <circle id="solar-dot-export" r="4" fill="#e91e63" stroke="#ffffff" stroke-width="1.5" style="display:none; pointer-events:none;"></circle>
+
+                  <!-- Interactive Day Hit Zones -->
+                  ${solarHitSlicesHtml}
                 </svg>
 
                 <!-- X-Axis Labels (Days 1 to 30) -->
@@ -2077,7 +2385,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.2.7 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.2 &bull; Home Assistant Custom Integration
       </div>
     `;
 
