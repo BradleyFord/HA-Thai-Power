@@ -1642,6 +1642,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "daily_import_kwh_history": recorder_history["daily_import_kwh_history"],
             "daily_solar_kwh_history": recorder_history["daily_solar_kwh_history"],
             "daily_export_kwh_history": recorder_history["daily_export_kwh_history"],
+
+            # 12-Month Historical Lookback & BESS Simulation Data
+            "lookback_12_months_data": self.lookback_12_months_data,
+            "bess_12_months_data": self.bess_12_months_data,
         }
 
     async def async_calculate_12_month_lookback(self) -> None:
@@ -1764,7 +1768,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.lookback_12_months_data = lookback_data
         _LOGGER.info("Calculated 12-month tariff lookback comparison with %d months", len(lookback_data))
-        self.async_set_updated_data(self.data)
+        new_data = dict(self.data) if self.data else {}
+        new_data["lookback_12_months_data"] = lookback_data
+        self.async_set_updated_data(new_data)
 
     async def async_calculate_bess_lookback(self) -> None:
         """Query hourly statistics from HA database for grid export over past year and simulate BESS cycling.
@@ -1952,7 +1958,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("Calculated 12-month BESS lookback simulation with %d months", len(bess_lookback_data))
         
         # Trigger coordinator data update notification so frontend redraws
-        self.async_set_updated_data(self.data)
+        new_data = dict(self.data) if self.data else {}
+        new_data["bess_12_months_data"] = bess_lookback_data
+        self.async_set_updated_data(new_data)
 
     def reset_outage_statistics(self) -> None:
         """Reset grid outage incident counts, cumulative downtime, and history log."""

@@ -401,6 +401,9 @@
       this._lang = this._resolveLanguage();
     }
 
+    const prevLookbackLen = (this._data && this._data.lookbackData && Array.isArray(this._data.lookbackData)) ? this._data.lookbackData.length : 0;
+    const prevBessLen = (this._data && this._data.bess12MonthsData && Array.isArray(this._data.bess12MonthsData)) ? this._data.bess12MonthsData.length : 0;
+
     const now = Date.now();
     if (this._lastHassUpdate && (now - this._lastHassUpdate < 500)) {
       if (!this._updateScheduled) {
@@ -409,7 +412,18 @@
           this._updateScheduled = false;
           this._lastHassUpdate = Date.now();
           this._extractData();
-          if (!this._rendered) {
+          const newLookbackLen = (this._data && this._data.lookbackData && Array.isArray(this._data.lookbackData)) ? this._data.lookbackData.length : 0;
+          const newBessLen = (this._data && this._data.bess12MonthsData && Array.isArray(this._data.bess12MonthsData)) ? this._data.bess12MonthsData.length : 0;
+          const dataStructureChanged = (
+            prevLookbackLen !== newLookbackLen ||
+            prevBessLen !== newBessLen ||
+            (this._isAnalyzing && newLookbackLen > 0) ||
+            (this._isBessAnalyzing && newBessLen > 0)
+          );
+          if (newLookbackLen > 0 && this._isAnalyzing) this._isAnalyzing = false;
+          if (newBessLen > 0 && this._isBessAnalyzing) this._isBessAnalyzing = false;
+
+          if (!this._rendered || dataStructureChanged) {
             this._initialRender();
           } else {
             this._updateDOMValues();
@@ -422,7 +436,18 @@
     this._lastHassUpdate = now;
     this._extractData();
 
-    if (!this._rendered) {
+    const newLookbackLen = (this._data && this._data.lookbackData && Array.isArray(this._data.lookbackData)) ? this._data.lookbackData.length : 0;
+    const newBessLen = (this._data && this._data.bess12MonthsData && Array.isArray(this._data.bess12MonthsData)) ? this._data.bess12MonthsData.length : 0;
+    const dataStructureChanged = (
+      prevLookbackLen !== newLookbackLen ||
+      prevBessLen !== newBessLen ||
+      (this._isAnalyzing && newLookbackLen > 0) ||
+      (this._isBessAnalyzing && newBessLen > 0)
+    );
+    if (newLookbackLen > 0 && this._isAnalyzing) this._isAnalyzing = false;
+    if (newBessLen > 0 && this._isBessAnalyzing) this._isBessAnalyzing = false;
+
+    if (!this._rendered || dataStructureChanged) {
       this._initialRender();
     } else {
       this._updateDOMValues();
@@ -1251,7 +1276,19 @@
       btnTrigger.addEventListener('click', () => {
         this._isAnalyzing = true;
         this._initialRender();
-        this._hass.callService('thai_energy_monitor', 'trigger_12_month_lookback', {});
+        this._hass.callService('thai_energy_monitor', 'trigger_12_month_lookback', {})
+          .then(() => {
+            setTimeout(() => {
+              this._isAnalyzing = false;
+              this._extractData();
+              this._initialRender();
+            }, 300);
+          })
+          .catch((err) => {
+            console.error("Lookback analysis failed:", err);
+            this._isAnalyzing = false;
+            this._initialRender();
+          });
       });
     }
 
@@ -1260,7 +1297,19 @@
       btnTriggerBess.addEventListener('click', () => {
         this._isBessAnalyzing = true;
         this._initialRender();
-        this._hass.callService('thai_energy_monitor', 'trigger_bess_lookback', {});
+        this._hass.callService('thai_energy_monitor', 'trigger_bess_lookback', {})
+          .then(() => {
+            setTimeout(() => {
+              this._isBessAnalyzing = false;
+              this._extractData();
+              this._initialRender();
+            }, 300);
+          })
+          .catch((err) => {
+            console.error("BESS simulation failed:", err);
+            this._isBessAnalyzing = false;
+            this._initialRender();
+          });
       });
     }
 
@@ -2880,7 +2929,7 @@
       ` : ''}
 
       <div class="footer-note">
-        Thailand Energy & Solar Monitor v2.3.6 &bull; Home Assistant Custom Integration
+        Thailand Energy & Solar Monitor v2.3.7 &bull; Home Assistant Custom Integration
       </div>
     `;
 
