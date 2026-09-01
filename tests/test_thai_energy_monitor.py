@@ -381,8 +381,35 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         self.assertAlmostEqual(solcast_remaining_forecast, 715.0, places=2)
         self.assertAlmostEqual(projected_monthly_solar_kwh, 1065.0, places=2)
 
+    def test_solcast_forward_savings_tou_financial_projection(self) -> None:
+        """Test forward financial savings projection using Solcast day forecasts and TOU windows."""
+        accrued_savings_thb = 2168.08
+        peak_rate = 5.7982
+        offpeak_rate = 2.6369
+
+        # 6 forward days with specific weekday (Mon-Fri) vs weekend (Sat-Sun) distribution
+        forward_days_kwh = [37.56, 37.37, 33.64, 35.38, 35.75, 35.52]
+        # Assume 4 weekdays, 2 weekend days
+        is_weekday_flags = [True, True, True, True, False, False]
+
+        forward_savings = 0.0
+        for kwh, is_weekday in zip(forward_days_kwh, is_weekday_flags):
+            if is_weekday:
+                # 90% peak window, 10% morning off-peak window
+                day_peak_kwh = 0.90 * kwh
+                day_offpeak_kwh = 0.10 * kwh
+                day_savings = (day_peak_kwh * peak_rate) + (day_offpeak_kwh * offpeak_rate)
+            else:
+                day_savings = kwh * offpeak_rate
+            forward_savings += day_savings
+
+        total_projected_savings = accrued_savings_thb + forward_savings
+        self.assertAlmostEqual(forward_savings, 977.08, places=2)
+        self.assertAlmostEqual(total_projected_savings, 3145.16, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
