@@ -1373,48 +1373,25 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 current_cycle_day = min(30, max(1, int(elapsed_days_fraction)))
                 remaining_days = max(0, 30 - current_cycle_day)
                 avg_solcast = sum(forward_days) / len(forward_days)
-                bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
                 for r_idx in range(remaining_days):
-                    day_kwh = forward_days[r_idx] if r_idx < len(forward_days) else avg_solcast
-                    solcast_remaining_forecast_kwh += day_kwh
-
-                    # Calculate forward date to determine weekday vs weekend/holiday for TOU pricing
-                    f_date = now + timedelta(days=r_idx + 1)
-                    f_midday = datetime(f_date.year, f_date.month, f_date.day, 12, 0, 0, tzinfo=bkk_tz)
-                    is_forward_offpeak = self.is_tou_offpeak(f_midday)
-
-                    if category in (TARIFF_1_3_1, TARIFF_1_3_2):
-                        if not is_forward_offpeak:
-                            # Weekday daytime solar production: ~90% peak window, ~10% morning off-peak
-                            day_peak_kwh = 0.90 * day_kwh
-                            day_offpeak_kwh = 0.10 * day_kwh
-                            day_savings = (day_peak_kwh * self.active_tou_peak_rate) + (
-                                day_offpeak_kwh * self.active_tou_offpeak_rate
-                            )
-                        else:
-                            # Weekend / Public Holiday: 100% off-peak window
-                            day_savings = day_kwh * self.active_tou_offpeak_rate
+                    if r_idx < len(forward_days):
+                        solcast_remaining_forecast_kwh += forward_days[r_idx]
                     else:
-                        day_savings = day_kwh * marginal_rate
-
-                    solcast_forward_savings_thb += day_savings
+                        solcast_remaining_forecast_kwh += avg_solcast
 
         if solcast_found and solcast_remaining_forecast_kwh > 0:
             projected_monthly_solar_kwh = self.monthly_solar_kwh + solcast_remaining_forecast_kwh
-            projected_monthly_solar_savings_thb = (
-                self.monthly_solar_savings_thb + solcast_forward_savings_thb
-            )
         else:
             projected_monthly_solar_kwh = (self.monthly_solar_kwh / elapsed_days_fraction) * 30.0
-            projected_monthly_solar_savings_thb = (
-                self.monthly_solar_savings_thb / elapsed_days_fraction
-            ) * 30.0
 
         projected_monthly_export_kwh = (self.monthly_export_kwh / elapsed_days_fraction) * 30.0
         projected_monthly_self_consumption_kwh = max(
             0.0, projected_monthly_solar_kwh - projected_monthly_export_kwh
         )
 
+        projected_monthly_solar_savings_thb = (
+            self.monthly_solar_savings_thb / elapsed_days_fraction
+        ) * 30.0
         projected_monthly_solar_revenue_thb = (
             projected_monthly_export_kwh * sellback_rate
         )
@@ -1441,17 +1418,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 gross_projected_consumption, self.active_tiered_1_2_tiers
             )
         elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            # Without solar, daytime self-consumed load is displaced onto grid import
-            # Solar production is ~70% weekday peak / 30% weekend off-peak on average
-            base_import_peak = projected_monthly_import * (0.20 if self.monthly_solar_kwh > 5.0 else 0.40)
-            displaced_solar_peak = 0.70 * projected_monthly_self_consumption_kwh
-            gross_peak_kwh = min(gross_projected_consumption, base_import_peak + displaced_solar_peak)
-            gross_offpeak_kwh = max(0.0, gross_projected_consumption - gross_peak_kwh)
-
+            # Without solar, daytime load is imported from grid (40% peak, 60% off-peak)
+            gross_peak_ratio = 0.40
+            gross_offpeak_ratio = 0.60
             gross_base_cost = (
-                gross_peak_kwh * self.active_tou_peak_rate
+                (gross_projected_consumption * gross_peak_ratio) * self.active_tou_peak_rate
             ) + (
-                gross_offpeak_kwh * self.active_tou_offpeak_rate
+                (gross_projected_consumption * gross_offpeak_ratio) * self.active_tou_offpeak_rate
             )
 
         gross_subtotal = gross_base_cost + service_charge + gross_ft_charge

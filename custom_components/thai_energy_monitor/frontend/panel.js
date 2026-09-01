@@ -467,38 +467,22 @@
       this._lang = this._resolveLanguage();
     }
 
-    const prevTariff = (this._data && this._data.tariffCategory) ? this._data.tariffCategory : '';
-    const prevIsTou = (this._data && this._data.isTou !== undefined) ? this._data.isTou : null;
-    const prevAccrued = (this._data && this._data.accruedBill) ? this._data.accruedBill : '0.00';
-    const prevTotal = (this._data && this._data.totalBill) ? this._data.totalBill : '0.00';
-    const prevImport = (this._data && this._data.importKwh) ? this._data.importKwh : '0.00';
     const prevLookbackLen = (this._data && this._data.lookbackData && Array.isArray(this._data.lookbackData)) ? this._data.lookbackData.length : 0;
     const prevBessLen = (this._data && this._data.bess12MonthsData && Array.isArray(this._data.bess12MonthsData)) ? this._data.bess12MonthsData.length : 0;
 
     const now = Date.now();
-    if (this._lastHassUpdate && (now - this._lastHassUpdate < 300)) {
+    if (this._lastHassUpdate && (now - this._lastHassUpdate < 500)) {
       if (!this._updateScheduled) {
         this._updateScheduled = true;
         setTimeout(() => {
           this._updateScheduled = false;
           this._lastHassUpdate = Date.now();
           this._extractData();
-          const newTariff = (this._data && this._data.tariffCategory) ? this._data.tariffCategory : '';
-          const newIsTou = (this._data && this._data.isTou !== undefined) ? this._data.isTou : null;
-          const newAccrued = (this._data && this._data.accruedBill) ? this._data.accruedBill : '0.00';
-          const newTotal = (this._data && this._data.totalBill) ? this._data.totalBill : '0.00';
-          const newImport = (this._data && this._data.importKwh) ? this._data.importKwh : '0.00';
           const newLookbackLen = (this._data && this._data.lookbackData && Array.isArray(this._data.lookbackData)) ? this._data.lookbackData.length : 0;
           const newBessLen = (this._data && this._data.bess12MonthsData && Array.isArray(this._data.bess12MonthsData)) ? this._data.bess12MonthsData.length : 0;
-
           const dataStructureChanged = (
             prevLookbackLen !== newLookbackLen ||
             prevBessLen !== newBessLen ||
-            prevTariff !== newTariff ||
-            prevIsTou !== newIsTou ||
-            (prevAccrued === '0.00' && newAccrued !== '0.00') ||
-            (prevTotal === '0.00' && newTotal !== '0.00') ||
-            (prevImport === '0.00' && newImport !== '0.00') ||
             (this._isAnalyzing && newLookbackLen > 0) ||
             (this._isBessAnalyzing && newBessLen > 0)
           );
@@ -510,7 +494,7 @@
           } else {
             this._updateDOMValues();
           }
-        }, 300);
+        }, 500);
       }
       return;
     }
@@ -518,22 +502,11 @@
     this._lastHassUpdate = now;
     this._extractData();
 
-    const newTariff = (this._data && this._data.tariffCategory) ? this._data.tariffCategory : '';
-    const newIsTou = (this._data && this._data.isTou !== undefined) ? this._data.isTou : null;
-    const newAccrued = (this._data && this._data.accruedBill) ? this._data.accruedBill : '0.00';
-    const newTotal = (this._data && this._data.totalBill) ? this._data.totalBill : '0.00';
-    const newImport = (this._data && this._data.importKwh) ? this._data.importKwh : '0.00';
     const newLookbackLen = (this._data && this._data.lookbackData && Array.isArray(this._data.lookbackData)) ? this._data.lookbackData.length : 0;
     const newBessLen = (this._data && this._data.bess12MonthsData && Array.isArray(this._data.bess12MonthsData)) ? this._data.bess12MonthsData.length : 0;
-
     const dataStructureChanged = (
       prevLookbackLen !== newLookbackLen ||
       prevBessLen !== newBessLen ||
-      prevTariff !== newTariff ||
-      prevIsTou !== newIsTou ||
-      (prevAccrued === '0.00' && newAccrued !== '0.00') ||
-      (prevTotal === '0.00' && newTotal !== '0.00') ||
-      (prevImport === '0.00' && newImport !== '0.00') ||
       (this._isAnalyzing && newLookbackLen > 0) ||
       (this._isBessAnalyzing && newBessLen > 0)
     );
@@ -549,15 +522,9 @@
 
   _getIsOffpeak(states) {
     if (!states) return false;
-    let billEntityId = 'sensor.monthly_estimated_bill_projected';
+    let billEntityId = 'sensor.monthly_estimated_bill';
     for (const entityId in states) {
-      if (
-        states[entityId] &&
-        states[entityId].attributes &&
-        (states[entityId].attributes.tariff_category !== undefined ||
-         states[entityId].attributes.monthly_accrued_bill !== undefined ||
-         states[entityId].attributes.tou_status !== undefined)
-      ) {
+      if (entityId.includes('monthly_estimated_bill')) {
         billEntityId = entityId;
         break;
       }
@@ -735,25 +702,11 @@
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
 
     // Dynamically locate the estimated bill entity ID to support custom names/device prefixes
-    let billEntityId = 'sensor.monthly_estimated_bill_projected';
+    let billEntityId = 'sensor.monthly_estimated_bill';
     for (const entityId in states) {
-      if (
-        states[entityId] &&
-        states[entityId].attributes &&
-        (states[entityId].attributes.tariff_category !== undefined ||
-         states[entityId].attributes.monthly_accrued_bill !== undefined ||
-         states[entityId].attributes.projected_monthly_import !== undefined)
-      ) {
+      if (entityId.includes('monthly_estimated_bill')) {
         billEntityId = entityId;
         break;
-      }
-    }
-    if (!states[billEntityId]) {
-      for (const entityId in states) {
-        if (entityId.includes('monthly_estimated_bill')) {
-          billEntityId = entityId;
-          break;
-        }
       }
     }
 
@@ -1732,14 +1685,6 @@
     setText('val-sellback-rate-display', d.enableSolarSellback ? `฿${d.sellbackRate} / kWh` : `฿0.00 / kWh (${this.t('no_sellback_contract')})`);
     setText('val-cycle-day', `${this.t('day_label')} ${d.currentDayOfCycle} / 30`);
 
-    setHtml('val-projected-month-end-line', `${this.t('projected_month_end')} <strong>฿${this._formatNum(d.totalBill)}</strong> (${this._formatNum(d.projectedImport)} kWh ${this.t('run_rate')})`);
-    setHtml('val-projected-import-volume-line', `${this.t('projected_month_end_volume')} <strong>${this._formatNum(d.projectedImport)} kWh</strong>`);
-    setText('val-marginal-rate', `฿${this._formatNum(d.marginalRate)} / kWh`);
-    setText('val-grid-price', `฿${this._formatNum(d.gridPrice)} / kWh`);
-    setText('val-last-month-bill', `฿${this._formatNum(d.lastMonthBill)} (${this._formatNum(d.lastMonthImport)} kWh)`);
-    setText('val-lifetime-import', `${this._formatNum(d.lifetimeImport)} kWh`);
-    setText('val-service-charge', `฿${this._formatNum(d.serviceCharge)}`);
-
     // Dynamic updates for Solcast Card
     setHtml('val-solcast-today-main', `${parseFloat(d.solcastForecastToday).toFixed(2)} <span style="font-size: 18px;">kWh</span>`);
     setText('val-solcast-remaining', `${d.solcastForecastRemaining} kWh`);
@@ -2571,7 +2516,7 @@
           <div class="card">
             <h2>${this.t('current_accrued_bill')} <span>(THB)</span></h2>
             <div class="metric-main" id="val-accrued-bill">฿${this._formatNum(d.accruedBill)}</div>
-            <div style="font-size: 13px; color: var(--primary-color, #03a9f4); margin-bottom: 4px; font-weight: 500;" id="val-projected-month-end-line">
+            <div style="font-size: 13px; color: var(--primary-color, #03a9f4); margin-bottom: 4px; font-weight: 500;">
               ${this.t('projected_month_end')} <strong>฿${this._formatNum(d.totalBill)}</strong> (${this._formatNum(d.projectedImport)} kWh ${this.t('run_rate')})
             </div>
             <div style="font-size: 12px; color: var(--success-color, #4caf50); margin-bottom: 12px; font-weight: 500;" id="val-projected-solar-benefit-line">
@@ -2588,7 +2533,7 @@
               </div>
               <div class="row">
                 <span class="label">${this.t('fixed_service_charge')}</span>
-                <span class="val" id="val-service-charge">฿${this._formatNum(d.serviceCharge)}</span>
+                <span class="val">฿${this._formatNum(d.serviceCharge)}</span>
               </div>
               <div class="row">
                 <span class="label">${this.t('accrued_statutory_vat')}</span>
@@ -2600,7 +2545,7 @@
           <div class="card">
             <h2>${this.t('detailed_consumption')}</h2>
             <div class="metric-main" style="color: var(--primary-color, #03a9f4);"><span id="val-import-kwh">${this._formatNum(d.importKwh)}</span> <span style="font-size: 18px;">kWh</span></div>
-            <div style="font-size: 13px; color: #9e9e9e; margin-bottom: 12px;" id="val-projected-import-volume-line">
+            <div style="font-size: 13px; color: #9e9e9e; margin-bottom: 12px;">
               ${this.t('projected_month_end_volume')} <strong>${this._formatNum(d.projectedImport)} kWh</strong>
             </div>
             <div class="table-rows">
@@ -2610,19 +2555,19 @@
               </div>
               <div class="row">
                 <span class="label">${this.t('active_marginal_rate')}</span>
-                <span class="val" id="val-marginal-rate">฿${this._formatNum(d.marginalRate)} / kWh</span>
+                <span class="val">฿${this._formatNum(d.marginalRate)} / kWh</span>
               </div>
               <div class="row">
                 <span class="label">${this.t('energy_dashboard_price')}</span>
-                <span class="val" id="val-grid-price">฿${this._formatNum(d.gridPrice)} / kWh</span>
+                <span class="val">฿${this._formatNum(d.gridPrice)} / kWh</span>
               </div>
               <div class="row">
                 <span class="label">${this.t('last_month_bill')}</span>
-                <span class="val" id="val-last-month-bill">฿${this._formatNum(d.lastMonthBill)} (${this._formatNum(d.lastMonthImport)} kWh)</span>
+                <span class="val">฿${this._formatNum(d.lastMonthBill)} (${this._formatNum(d.lastMonthImport)} kWh)</span>
               </div>
               <div class="row">
                 <span class="label">${this.t('lifetime_import')}</span>
-                <span class="val" id="val-lifetime-import">${this._formatNum(d.lifetimeImport)} kWh</span>
+                <span class="val">${this._formatNum(d.lifetimeImport)} kWh</span>
               </div>
             </div>
           </div>
