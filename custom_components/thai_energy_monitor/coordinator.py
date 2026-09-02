@@ -1341,99 +1341,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
 
-        # 3. Project 30-day monthly solar generation, export, savings, and bill without solar
-        # Check if live multi-day Solcast forecast sensors are available in Home Assistant
-        solcast_remaining_forecast_kwh = 0.0
-        solcast_found = False
-        if hasattr(self, "hass") and self.hass and hasattr(self.hass, "states"):
-            forward_days: list[float] = []
-            for d_idx in range(2, 8):
-                sensor_patterns = [
-                    f"sensor.solcast_pv_forecast_forecast_day_{d_idx}",
-                    f"sensor.solcast_forecast_day_{d_idx}",
-                ]
-                if d_idx == 2:
-                    sensor_patterns.extend([
-                        "sensor.solcast_pv_forecast_forecast_tomorrow",
-                        "sensor.solcast_forecast_tomorrow",
-                    ])
-                for sp in sensor_patterns:
-                    st = self.hass.states.get(sp)
-                    if st and st.state not in (None, "unavailable", "unknown"):
-                        try:
-                            val = float(st.state)
-                            if val >= 0:
-                                forward_days.append(val)
-                                solcast_found = True
-                                break
-                        except (ValueError, TypeError):
-                            pass
-
-            if solcast_found and forward_days:
-                current_cycle_day = min(30, max(1, int(elapsed_days_fraction)))
-                remaining_days = max(0, 30 - current_cycle_day)
-                avg_solcast = sum(forward_days) / len(forward_days)
-                for r_idx in range(remaining_days):
-                    if r_idx < len(forward_days):
-                        solcast_remaining_forecast_kwh += forward_days[r_idx]
-                    else:
-                        solcast_remaining_forecast_kwh += avg_solcast
-
-        if solcast_found and solcast_remaining_forecast_kwh > 0:
-            projected_monthly_solar_kwh = self.monthly_solar_kwh + solcast_remaining_forecast_kwh
-        else:
-            projected_monthly_solar_kwh = (self.monthly_solar_kwh / elapsed_days_fraction) * 30.0
-
-        projected_monthly_export_kwh = (self.monthly_export_kwh / elapsed_days_fraction) * 30.0
-        projected_monthly_self_consumption_kwh = max(
-            0.0, projected_monthly_solar_kwh - projected_monthly_export_kwh
-        )
-
-        projected_monthly_solar_savings_thb = (
-            self.monthly_solar_savings_thb / elapsed_days_fraction
-        ) * 30.0
-        projected_monthly_solar_revenue_thb = (
-            projected_monthly_export_kwh * sellback_rate
-        )
-        projected_monthly_total_solar_benefit_thb = (
-            projected_monthly_solar_savings_thb + projected_monthly_solar_revenue_thb
-        )
-
-        # Gross projected consumption without solar offset = grid import + self-consumed solar
-        gross_projected_consumption = (
-            projected_monthly_import + projected_monthly_self_consumption_kwh
-        )
-        gross_ft_charge = gross_projected_consumption * ft_rate
-        gross_base_cost = 0.0
-
-        if category == TARIFF_1_1:
-            if gross_projected_consumption <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
-                gross_base_cost = 0.0
-            else:
-                gross_base_cost = self.calculate_tiered_cost(
-                    gross_projected_consumption, TARIFF_1_1_TIERS
-                )
-        elif category == TARIFF_1_2:
-            gross_base_cost = self.calculate_tiered_cost(
-                gross_projected_consumption, self.active_tiered_1_2_tiers
-            )
-        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            # Without solar, daytime load is imported from grid (40% peak, 60% off-peak)
-            gross_peak_ratio = 0.40
-            gross_offpeak_ratio = 0.60
-            gross_base_cost = (
-                (gross_projected_consumption * gross_peak_ratio) * self.active_tou_peak_rate
-            ) + (
-                (gross_projected_consumption * gross_offpeak_ratio) * self.active_tou_offpeak_rate
-            )
-
-        gross_subtotal = gross_base_cost + service_charge + gross_ft_charge
-        projected_bill_without_solar_thb = gross_subtotal * (1.0 + VAT_RATE)
-        saved_bill_amount = max(0.0, projected_bill_without_solar_thb - monthly_estimated_bill)
-        projected_solar_bill_reduction_pct = (
-            (saved_bill_amount / max(1.0, projected_bill_without_solar_thb)) * 100.0
-        )
-
+        # 3. Setup economic parameters for BESS and outage calculations
         bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
         outage_hours = self.total_outage_seconds / 3600.0
         economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
@@ -1616,6 +1524,154 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
             accrued_vat_amount = accrued_subtotal * VAT_RATE
             monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
+
+        # 4. Project 30-day monthly solar generation, export, savings, and bill without solar
+        # Check if live multi-day Solcast forecast sensors are available in Home Assistant
+        solcast_remaining_forecast_kwh = 0.0
+        solcast_forward_savings_thb = 0.0
+        solcast_found = False
+        forward_days: list[float] = []
+
+        if hasattr(self, "hass") and self.hass and hasattr(self.hass, "states"):
+            # 1. Extract remaining today solar forecast
+            rem_today_kwh = 0.0
+            for sensor_name in [
+                "sensor.solcast_pv_forecast_forecast_remaining_today",
+                "sensor.solcast_forecast_remaining_today",
+            ]:
+                st = self.hass.states.get(sensor_name)
+                if st and st.state not in (None, "unavailable", "unknown"):
+                    try:
+                        val = float(st.state)
+                        if val >= 0:
+                            rem_today_kwh = val
+                            solcast_remaining_forecast_kwh += val
+                            solcast_found = True
+                            break
+                    except (ValueError, TypeError):
+                        pass
+
+            # Calculate savings for remaining today solar forecast
+            if rem_today_kwh > 0:
+                if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+                    today_is_workday = is_today_weekday and not (self.th_holidays and now.date() in self.th_holidays)
+                    if today_is_workday:
+                        # Daytime remaining solar during weekday is 90% peak window, 10% off-peak
+                        today_rem_savings = (0.90 * rem_today_kwh * self.active_tou_peak_rate) + (
+                            0.10 * rem_today_kwh * self.active_tou_offpeak_rate
+                        )
+                    else:
+                        today_rem_savings = rem_today_kwh * self.active_tou_offpeak_rate
+                else:
+                    today_rem_savings = rem_today_kwh * marginal_rate
+                solcast_forward_savings_thb += today_rem_savings
+
+            # 2. Extract forward daily forecasts (Days 2 to 7)
+            for d_idx in range(2, 8):
+                sensor_patterns = [
+                    f"sensor.solcast_pv_forecast_forecast_day_{d_idx}",
+                    f"sensor.solcast_forecast_day_{d_idx}",
+                ]
+                if d_idx == 2:
+                    sensor_patterns.extend([
+                        "sensor.solcast_pv_forecast_forecast_tomorrow",
+                        "sensor.solcast_forecast_tomorrow",
+                    ])
+                for sp in sensor_patterns:
+                    st = self.hass.states.get(sp)
+                    if st and st.state not in (None, "unavailable", "unknown"):
+                        try:
+                            val = float(st.state)
+                            if val >= 0:
+                                forward_days.append(val)
+                                solcast_found = True
+                                break
+                        except (ValueError, TypeError):
+                            pass
+
+            if solcast_found and forward_days:
+                current_cycle_day = min(30, max(1, int(elapsed_days_fraction)))
+                remaining_days = max(0, 30 - current_cycle_day)
+                avg_solcast = sum(forward_days) / len(forward_days)
+                for r_idx in range(remaining_days):
+                    day_kwh = forward_days[r_idx] if r_idx < len(forward_days) else avg_solcast
+                    solcast_remaining_forecast_kwh += day_kwh
+
+                    f_date = (now + timedelta(days=r_idx + 1)).date()
+                    f_is_weekday = f_date.weekday() < 5
+                    f_is_workday = f_is_weekday and not (self.th_holidays and f_date in self.th_holidays)
+
+                    if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+                        if f_is_workday:
+                            day_savings = (0.90 * day_kwh * self.active_tou_peak_rate) + (
+                                0.10 * day_kwh * self.active_tou_offpeak_rate
+                            )
+                        else:
+                            day_savings = day_kwh * self.active_tou_offpeak_rate
+                    else:
+                        day_savings = day_kwh * marginal_rate
+
+                    solcast_forward_savings_thb += day_savings
+
+        if solcast_found and solcast_remaining_forecast_kwh > 0:
+            projected_monthly_solar_kwh = self.monthly_solar_kwh + solcast_remaining_forecast_kwh
+            projected_monthly_solar_savings_thb = (
+                self.monthly_solar_savings_thb + solcast_forward_savings_thb
+            )
+        else:
+            projected_monthly_solar_kwh = (self.monthly_solar_kwh / elapsed_days_fraction) * 30.0
+            projected_monthly_solar_savings_thb = (
+                self.monthly_solar_savings_thb / elapsed_days_fraction
+            ) * 30.0
+
+        projected_monthly_export_kwh = (self.monthly_export_kwh / elapsed_days_fraction) * 30.0
+        projected_monthly_self_consumption_kwh = max(
+            0.0, projected_monthly_solar_kwh - projected_monthly_export_kwh
+        )
+
+        projected_monthly_solar_revenue_thb = (
+            projected_monthly_export_kwh * sellback_rate
+        )
+        projected_monthly_total_solar_benefit_thb = (
+            projected_monthly_solar_savings_thb + projected_monthly_solar_revenue_thb
+        )
+
+        # Gross projected consumption without solar offset = grid import + self-consumed solar
+        gross_projected_consumption = (
+            projected_monthly_import + projected_monthly_self_consumption_kwh
+        )
+        gross_ft_charge = gross_projected_consumption * ft_rate
+        gross_base_cost = 0.0
+
+        if category == TARIFF_1_1:
+            if gross_projected_consumption <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
+                gross_base_cost = 0.0
+            else:
+                gross_base_cost = self.calculate_tiered_cost(
+                    gross_projected_consumption, TARIFF_1_1_TIERS
+                )
+        elif category == TARIFF_1_2:
+            gross_base_cost = self.calculate_tiered_cost(
+                gross_projected_consumption, self.active_tiered_1_2_tiers
+            )
+        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            base_import_peak = projected_monthly_import * (0.20 if self.monthly_solar_kwh > 5.0 else 0.40)
+            displaced_solar_peak = 0.70 * projected_monthly_self_consumption_kwh
+            gross_peak_kwh = min(gross_projected_consumption, base_import_peak + displaced_solar_peak)
+            gross_offpeak_kwh = max(0.0, gross_projected_consumption - gross_peak_kwh)
+
+            gross_base_cost = (
+                gross_peak_kwh * self.active_tou_peak_rate
+            ) + (
+                gross_offpeak_kwh * self.active_tou_offpeak_rate
+            )
+
+        gross_subtotal = gross_base_cost + service_charge + gross_ft_charge
+        projected_bill_without_solar_thb = gross_subtotal * (1.0 + VAT_RATE)
+        saved_bill_amount = max(0.0, projected_bill_without_solar_thb - monthly_estimated_bill)
+        projected_solar_bill_reduction_pct = (
+            (saved_bill_amount / max(1.0, projected_bill_without_solar_thb)) * 100.0
+        )
 
         self.hass.async_create_task(self._async_save_storage())
 
