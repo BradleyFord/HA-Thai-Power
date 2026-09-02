@@ -17,6 +17,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import (
     DOMAIN,
+    VERSION,
     CONF_UTILITY_PROVIDER,
     CONF_TARIFF_CATEGORY,
     CONF_BILLING_DAY,
@@ -428,7 +429,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "thai-energy-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/thai_energy_ui/panel.js?v=2.3.4",
+                    "js_url": f"/thai_energy_ui/panel.js?v={VERSION}",
                 }
             },
             require_admin=False,
