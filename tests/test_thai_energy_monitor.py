@@ -409,6 +409,22 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         self.assertAlmostEqual(total_projected_savings, 3309.82, places=1)
 
 
+    def test_solcast_dampened_forward_projection(self) -> None:
+        """Test forward solar projection with native/adaptive dampening factor applied."""
+        accrued_solar_kwh = 490.04
+        accrued_savings_thb = 2317.76
+        dampen_factor = 0.55
+
+        # Raw Solcast forecast days
+        raw_forward_kwh = [39.72, 39.62, 38.45, 36.44, 38.13, 37.90]
+        # Calibrated dampened days
+        dampened_forward_kwh = [k * dampen_factor for k in raw_forward_kwh]
+
+        projected_total_kwh = accrued_solar_kwh + sum(dampened_forward_kwh)
+        self.assertAlmostEqual(sum(dampened_forward_kwh), 126.64, places=1)
+        self.assertAlmostEqual(projected_total_kwh, 616.68, places=1)
+
+
 if __name__ == "__main__":
     unittest.main()
 

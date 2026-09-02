@@ -660,19 +660,31 @@
       solcastPowerUnit = 'kW';
     }
 
+    // Dynamically locate the estimated bill entity ID to support custom names/device prefixes
+    let billEntityId = 'sensor.monthly_estimated_bill';
+    for (const entityId in states) {
+      if (entityId.includes('monthly_estimated_bill')) {
+        billEntityId = entityId;
+        break;
+      }
+    }
+
+    // Extract Solcast Dampening Factor
+    const solcastDampeningFactor = parseFloat(getAttribute(billEntityId, 'solcast_dampening_factor')) || 1.0;
+
     // Build structured 7-Day Solcast Forecast Array
     const todayDate = new Date();
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     const raw7DayForecast = [
-      parseFloat(solcastForecastToday) || 0,
-      parseFloat(solcastForecastTomorrow) || 0,
-      parseFloat(solcastForecastDay3) || 0,
-      parseFloat(solcastForecastDay4) || 0,
-      parseFloat(solcastForecastDay5) || 0,
-      parseFloat(solcastForecastDay6) || 0,
-      parseFloat(solcastForecastDay7) || 0,
+      (parseFloat(solcastForecastToday) || 0) * solcastDampeningFactor,
+      (parseFloat(solcastForecastTomorrow) || 0) * solcastDampeningFactor,
+      (parseFloat(solcastForecastDay3) || 0) * solcastDampeningFactor,
+      (parseFloat(solcastForecastDay4) || 0) * solcastDampeningFactor,
+      (parseFloat(solcastForecastDay5) || 0) * solcastDampeningFactor,
+      (parseFloat(solcastForecastDay6) || 0) * solcastDampeningFactor,
+      (parseFloat(solcastForecastDay7) || 0) * solcastDampeningFactor,
     ];
 
     const solcast7DayForecast = raw7DayForecast.map((kwh, idx) => {
@@ -695,20 +707,11 @@
 
     const total7DayKwh = raw7DayForecast.reduce((acc, v) => acc + v, 0);
     const validForecasts = raw7DayForecast.filter(v => v > 0);
-    const avg7DayKwh = validForecasts.length > 0 ? (total7DayKwh / validForecasts.length) : (parseFloat(solcastForecastToday) > 0 ? parseFloat(solcastForecastToday) : 35.0);
+    const avg7DayKwh = validForecasts.length > 0 ? (total7DayKwh / validForecasts.length) : ((parseFloat(solcastForecastToday) || 35.0) * solcastDampeningFactor);
     const max7DayKwh = Math.max(...raw7DayForecast, 1.0);
 
     const isOffpeak = this._getIsOffpeak(states);
     const touStatus = isOffpeak ? 'Off-Peak' : 'Peak';
-
-    // Dynamically locate the estimated bill entity ID to support custom names/device prefixes
-    let billEntityId = 'sensor.monthly_estimated_bill';
-    for (const entityId in states) {
-      if (entityId.includes('monthly_estimated_bill')) {
-        billEntityId = entityId;
-        break;
-      }
-    }
 
     // Map exact sensor names with multi-alias fallbacks & coordinator attribute resolution
     const importKwh = getEntityState('sensor.monthly_grid_import_energy') || getEntityState('sensor.monthly_import_kwh') || getAttribute(billEntityId, 'monthly_import_kwh') || '0.00';
@@ -1174,6 +1177,7 @@
       solcastTotal7DayKwh: total7DayKwh.toFixed(1),
       solcastAvg7DayKwh: avg7DayKwh.toFixed(1),
       solcastMax7DayKwh: max7DayKwh,
+      solcastDampeningFactor: solcastDampeningFactor,
 
       customPeakRate: getAttribute(billEntityId, 'custom_peak_rate') || '',
       customOffpeakRate: getAttribute(billEntityId, 'custom_offpeak_rate') || '',

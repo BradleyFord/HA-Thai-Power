@@ -1531,9 +1531,22 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         solcast_forward_savings_thb = 0.0
         solcast_found = False
         forward_days: list[float] = []
+        solcast_dampen_factor = 1.0
 
         if hasattr(self, "hass") and self.hass and hasattr(self.hass, "states"):
-            # 1. Extract remaining today solar forecast
+            # 1. Check if Solcast dampening entity or factors are configured in Home Assistant
+            damp_st = self.hass.states.get("sensor.solcast_pv_forecast_dampening")
+            if damp_st and damp_st.attributes and "factors" in damp_st.attributes:
+                factors_list = damp_st.attributes.get("factors", [])
+                numeric_factors = [
+                    float(f["factor"]) for f in factors_list if isinstance(f, dict) and "factor" in f
+                ]
+                if numeric_factors:
+                    avg_factor = sum(numeric_factors) / len(numeric_factors)
+                    if 0.05 <= avg_factor <= 1.0:
+                        solcast_dampen_factor = avg_factor
+
+            # 2. Extract remaining today solar forecast
             rem_today_kwh = 0.0
             for sensor_name in [
                 "sensor.solcast_pv_forecast_forecast_remaining_today",
@@ -1545,28 +1558,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         val = float(st.state)
                         if val >= 0:
                             rem_today_kwh = val
-                            solcast_remaining_forecast_kwh += val
                             solcast_found = True
                             break
                     except (ValueError, TypeError):
                         pass
 
-            # Calculate savings for remaining today solar forecast
-            if rem_today_kwh > 0:
-                if category in (TARIFF_1_3_1, TARIFF_1_3_2):
-                    today_is_workday = is_today_weekday and not (self.th_holidays and now.date() in self.th_holidays)
-                    if today_is_workday:
-                        # Daytime remaining solar during weekday is 90% peak window, 10% off-peak
-                        today_rem_savings = (0.90 * rem_today_kwh * self.active_tou_peak_rate) + (
-                            0.10 * rem_today_kwh * self.active_tou_offpeak_rate
-                        )
-                    else:
-                        today_rem_savings = rem_today_kwh * self.active_tou_offpeak_rate
-                else:
-                    today_rem_savings = rem_today_kwh * marginal_rate
-                solcast_forward_savings_thb += today_rem_savings
-
-            # 2. Extract forward daily forecasts (Days 2 to 7)
+            # 3. Extract forward daily forecasts (Days 2 to 7)
             for d_idx in range(2, 8):
                 sensor_patterns = [
                     f"sensor.solcast_pv_forecast_forecast_day_{d_idx}",
@@ -1589,12 +1586,38 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         except (ValueError, TypeError):
                             pass
 
+            # If native dampening is inactive (1.0), calculate adaptive empirical dampening based on historical array output
+            if solcast_found and forward_days and elapsed_days_fraction >= 3.0:
+                avg_solcast_raw = sum(forward_days) / len(forward_days)
+                actual_avg_daily_solar = self.monthly_solar_kwh / elapsed_days_fraction
+                if avg_solcast_raw > 0 and actual_avg_daily_solar > 0:
+                    empirical_dampen = actual_avg_daily_solar / avg_solcast_raw
+                    if empirical_dampen < 0.85:
+                        solcast_dampen_factor = min(solcast_dampen_factor, max(0.30, empirical_dampen))
+
+            # Apply dampening to remaining today solar forecast
+            dampened_rem_today = rem_today_kwh * solcast_dampen_factor
+            if dampened_rem_today > 0:
+                solcast_remaining_forecast_kwh += dampened_rem_today
+                if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+                    today_is_workday = is_today_weekday and not (self.th_holidays and now.date() in self.th_holidays)
+                    if today_is_workday:
+                        today_rem_savings = (0.90 * dampened_rem_today * self.active_tou_peak_rate) + (
+                            0.10 * dampened_rem_today * self.active_tou_offpeak_rate
+                        )
+                    else:
+                        today_rem_savings = dampened_rem_today * self.active_tou_offpeak_rate
+                else:
+                    today_rem_savings = dampened_rem_today * marginal_rate
+                solcast_forward_savings_thb += today_rem_savings
+
             if solcast_found and forward_days:
                 current_cycle_day = min(30, max(1, int(elapsed_days_fraction)))
                 remaining_days = max(0, 30 - current_cycle_day)
                 avg_solcast = sum(forward_days) / len(forward_days)
                 for r_idx in range(remaining_days):
-                    day_kwh = forward_days[r_idx] if r_idx < len(forward_days) else avg_solcast
+                    raw_day_kwh = forward_days[r_idx] if r_idx < len(forward_days) else avg_solcast
+                    day_kwh = raw_day_kwh * solcast_dampen_factor
                     solcast_remaining_forecast_kwh += day_kwh
 
                     f_date = (now + timedelta(days=r_idx + 1)).date()
@@ -1705,6 +1728,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "projected_monthly_total_solar_benefit_thb": round(projected_monthly_total_solar_benefit_thb, 2),
             "projected_bill_without_solar_thb": round(projected_bill_without_solar_thb, 2),
             "projected_solar_bill_reduction_pct": round(projected_solar_bill_reduction_pct, 1),
+            "solcast_dampening_factor": round(solcast_dampen_factor, 2),
 
             # Today Calendar Day Live Entities
             "today_import_kwh": round(self.today_import_kwh, 3),
