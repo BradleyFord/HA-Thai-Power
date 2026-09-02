@@ -715,6 +715,10 @@
     const exportKwh = getEntityState('sensor.monthly_grid_export_energy') || getEntityState('sensor.monthly_export_kwh') || getAttribute(billEntityId, 'monthly_export_kwh') || '0.00';
     const solarKwh = getEntityState('sensor.monthly_solar_production_energy') || getEntityState('sensor.monthly_solar_kwh') || getAttribute(billEntityId, 'monthly_solar_kwh') || '0.00';
 
+    const todayImportKwh = getEntityState('sensor.today_grid_import_energy') || getEntityState('sensor.today_import_kwh') || getAttribute(billEntityId, 'today_import_kwh') || '0.00';
+    const todaySolarKwh = getEntityState('sensor.today_solar_production_energy') || getEntityState('sensor.today_solar_kwh') || getAttribute(billEntityId, 'today_solar_kwh') || '0.00';
+    const todayExportKwh = getEntityState('sensor.today_grid_export_energy') || getEntityState('sensor.today_export_kwh') || getAttribute(billEntityId, 'today_export_kwh') || '0.00';
+
     const accruedBill = getEntityState('sensor.monthly_accrued_bill_to_date') || getEntityState('sensor.monthly_accrued_bill') || getAttribute(billEntityId, 'monthly_accrued_bill') || '0.00';
     const accruedBaseCost = getAttribute(billEntityId, 'monthly_accrued_base_cost') || '0.00';
     const accruedFtCharge = getAttribute(billEntityId, 'monthly_accrued_ft_charge') || '0.00';
@@ -1009,10 +1013,33 @@
         }
       }
 
-      const rawProd = pySolarHistory[day - 1];
-      const prodVal = (rawProd !== undefined && rawProd !== null && parseFloat(rawProd) > 0.001) ? parseFloat(rawProd) : ((isPastOrToday && day === currentDay) ? parseFloat(solarKwh) : (isPastOrToday ? avgDailySolar : 0));
-      const rawExp = pyExportHistory[day - 1];
-      const exportVal = (rawExp !== undefined && rawExp !== null && parseFloat(rawExp) >= 0) ? parseFloat(rawExp) : (exportKwhNum > 0 ? avgDailyExport : 0.0);
+      // Production for day:
+      // Past days: recorder historical daily production (or average)
+      // Today: live today daily solar energy meter reading
+      // Future days: forward projected daily solar from Solcast weather forecast
+      let prodVal = 0.0;
+      let exportVal = 0.0;
+
+      if (day < currentDay) {
+        const rawProd = pySolarHistory[day - 1];
+        prodVal = (rawProd !== undefined && rawProd !== null && parseFloat(rawProd) > 0.001)
+          ? parseFloat(rawProd)
+          : avgDailySolar;
+        const rawExp = pyExportHistory[day - 1];
+        exportVal = (rawExp !== undefined && rawExp !== null && parseFloat(rawExp) >= 0)
+          ? parseFloat(rawExp)
+          : 0.0;
+      } else if (day === currentDay) {
+        const todaySolNum = parseFloat(todaySolarKwh);
+        prodVal = (!isNaN(todaySolNum) && todaySolNum > 0.0) ? todaySolNum : avgDailySolar;
+        const todayExpNum = parseFloat(todayExportKwh);
+        exportVal = (!isNaN(todayExpNum) && todayExpNum >= 0.0) ? todayExpNum : 0.0;
+      } else {
+        // Future days: projected daily yield based on Solcast forecast
+        prodVal = solcastVal;
+        exportVal = avgDailyExport;
+      }
+
       const selfVal = Math.max(0, prodVal - exportVal);
 
       solarMonthlyTrends.push({
