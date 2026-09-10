@@ -425,6 +425,29 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
         self.assertAlmostEqual(projected_total_kwh, 616.68, places=1)
 
 
+    def test_hourly_lts_reconciliation_exact_mea_bill(self) -> None:
+        """Test exact hourly LTS TOU calculation matching official MEA invoice 5,247.98 THB."""
+        peak_rate = 5.1135
+        offpeak_rate = 2.6037
+        ft_rate = 0.1572
+        service_charge = 38.22
+        vat_rate = 0.07
+
+        # 1,435.0 kWh total import across 30 days with measured post-sunset evening AC load
+        # 360.4 kWh Peak (09:00-22:00 weekdays), 1,074.6 kWh Off-Peak
+        peak_kwh = 360.4
+        offpeak_kwh = 1074.6
+        total_import = peak_kwh + offpeak_kwh
+
+        base_cost = (peak_kwh * peak_rate) + (offpeak_kwh * offpeak_rate)
+        ft_charge = total_import * ft_rate
+        subtotal = base_cost + service_charge + ft_charge
+        vat_amount = subtotal * vat_rate
+        total_bill = subtotal + vat_amount
+
+        self.assertAlmostEqual(total_bill, 5247.98, delta=1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
 

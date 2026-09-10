@@ -808,6 +808,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             bkk_now = now
 
         start_dt = self._get_billing_start_datetime(now)
+        today_start_dt = datetime(bkk_now.year, bkk_now.month, bkk_now.day, 0, 0, 0, tzinfo=bkk_tz)
         end_dt = now
 
         elapsed_sec = max(60.0, (now - start_dt).total_seconds())
@@ -815,35 +816,32 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         stat_ids = [sid for sid in (self.import_sensor_id, self.solar_sensor_id, self.export_sensor_id) if sid]
 
-        # Query permanent Long-Term Statistics (LTS) for daily aggregates across the billing cycle
-        def _fetch_lts_stats() -> dict[str, list[dict[str, Any]]]:
+        # Query permanent Long-Term Statistics (LTS) with hourly granularity across the billing cycle
+        def _fetch_hourly_lts_stats() -> dict[str, list[dict[str, Any]]]:
             try:
                 return statistics_during_period(
                     self.hass,
-                    start_time=start_dt - timedelta(days=1),
+                    start_time=start_dt - timedelta(hours=1),
                     end_time=end_dt + timedelta(hours=1),
                     statistic_ids=stat_ids,
-                    period="day",
+                    period="hour",
                     units=None,
                     types={"change", "state", "sum"},
                 )
             except Exception as err:
-                _LOGGER.debug("Could not query daily LTS statistics in executor: %s", err)
+                _LOGGER.debug("Could not query hourly LTS statistics in executor: %s", err)
                 return {}
 
         stats_dict: dict[str, list[dict[str, Any]]] = {}
         try:
-            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_lts_stats)
+            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_hourly_lts_stats)
         except Exception as err:
-            _LOGGER.debug("Executor error fetching LTS daily stats: %s", err)
+            _LOGGER.debug("Executor error fetching LTS hourly stats: %s", err)
 
-        def extract_daily_series(entity_id: str, today_live_val: float, total_monthly: float) -> list[float]:
-            avg_run_rate = total_monthly / elapsed_days_fraction if elapsed_days_fraction > 0 else 0.0
-            entity_stats = stats_dict.get(entity_id, []) if stats_dict else []
-
-            # Index LTS daily statistics by local Bangkok date key (YYYY-MM-DD)
-            stats_by_date: dict[str, float] = {}
-            for stat in entity_stats:
+        # Index hourly statistics for each sensor by datetime (hour resolution)
+        def index_hourly_stats(entity_id: str) -> dict[datetime, float]:
+            res: dict[datetime, float] = {}
+            for stat in stats_dict.get(entity_id, []) if stats_dict else []:
                 start_val = stat.get("start")
                 if isinstance(start_val, (int, float)):
                     if start_val > 1e11:
@@ -853,26 +851,76 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     stat_dt = start_val.astimezone(bkk_tz)
                 else:
                     continue
-
-                date_key = stat_dt.strftime("%Y-%m-%d")
+                stat_dt_hour = stat_dt.replace(minute=0, second=0, microsecond=0)
                 change_val = stat.get("change")
                 if change_val is not None and change_val >= 0.0:
-                    stats_by_date[date_key] = float(change_val)
+                    res[stat_dt_hour] = float(change_val)
+            return res
 
-            # Extract daily values for completed past days (0 to current_day - 2)
+        import_hourly = index_hourly_stats(self.import_sensor_id)
+        solar_hourly = index_hourly_stats(self.solar_sensor_id)
+        export_hourly = index_hourly_stats(self.export_sensor_id)
+
+        # 1. Deterministic Hourly Classification for Past Completed Days (start_dt to today_start_dt)
+        past_peak_import_kwh = 0.0
+        past_offpeak_import_kwh = 0.0
+        past_peak_base_cost_thb = 0.0
+        past_offpeak_base_cost_thb = 0.0
+        past_solar_savings_thb = 0.0
+
+        daily_import_sums: dict[str, float] = {}
+        daily_solar_sums: dict[str, float] = {}
+        daily_export_sums: dict[str, float] = {}
+
+        all_hours = sorted(set(list(import_hourly.keys()) + list(solar_hourly.keys()) + list(export_hourly.keys())))
+
+        for h_dt in all_hours:
+            if h_dt < start_dt or h_dt >= today_start_dt:
+                continue
+
+            h_date_str = h_dt.strftime("%Y-%m-%d")
+            h_hour = h_dt.hour
+            h_is_weekday = h_dt.weekday() < 5
+            h_is_holiday = bool(self.th_holidays and h_dt.date() in self.th_holidays)
+            is_peak = h_is_weekday and not h_is_holiday and (9 <= h_hour < 22)
+
+            imp_kwh = import_hourly.get(h_dt, 0.0)
+            sol_kwh = solar_hourly.get(h_dt, 0.0)
+            exp_kwh = export_hourly.get(h_dt, 0.0)
+            self_kwh = max(0.0, sol_kwh - exp_kwh)
+
+            daily_import_sums[h_date_str] = daily_import_sums.get(h_date_str, 0.0) + imp_kwh
+            daily_solar_sums[h_date_str] = daily_solar_sums.get(h_date_str, 0.0) + sol_kwh
+            daily_export_sums[h_date_str] = daily_export_sums.get(h_date_str, 0.0) + exp_kwh
+
+            if is_peak:
+                past_peak_import_kwh += imp_kwh
+                past_peak_base_cost_thb += imp_kwh * self.active_tou_peak_rate
+                past_solar_savings_thb += self_kwh * self.active_tou_peak_rate
+            else:
+                past_offpeak_import_kwh += imp_kwh
+                past_offpeak_base_cost_thb += imp_kwh * self.active_tou_offpeak_rate
+                past_solar_savings_thb += self_kwh * self.active_tou_offpeak_rate
+
+        # Build 30-day arrays for charts (completed past days, today, projected future days)
+        def build_daily_series(
+            daily_sums: dict[str, float],
+            today_live_val: float,
+            total_monthly: float
+        ) -> list[float]:
+            avg_run_rate = total_monthly / elapsed_days_fraction if elapsed_days_fraction > 0 else 0.0
             daily_values: list[float] = []
             missing_indices: list[int] = []
 
             for idx in range(current_day - 1):
                 day_date = (start_dt + timedelta(days=idx)).date()
                 date_key = day_date.strftime("%Y-%m-%d")
-                if date_key in stats_by_date:
-                    daily_values.append(round(stats_by_date[date_key], 3))
+                if date_key in daily_sums:
+                    daily_values.append(round(daily_sums[date_key], 3))
                 else:
                     daily_values.append(-1.0)
                     missing_indices.append(idx)
 
-            # Reconcile completed past days with exact target past total (total_monthly - today_live_val)
             target_past_total = max(0.0, total_monthly - today_live_val)
             known_past_sum = sum(v for v in daily_values if v >= 0.0)
 
@@ -886,28 +934,44 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for idx in range(len(daily_values)):
                     daily_values[idx] = round(daily_values[idx] * scale_factor, 3)
 
-            # For today (Day current_day): live accumulation directly from midnight baseline
+            # Today live value
             daily_values.append(round(today_live_val, 3))
 
-            # For future days in billing cycle: project average daily run-rate
+            # Future days projection
             for idx in range(current_day, 30):
                 daily_values.append(round(avg_run_rate, 3))
 
             return daily_values
 
-        daily_import = extract_daily_series(self.import_sensor_id, today_import_live, self.monthly_import_kwh)
-        daily_solar = extract_daily_series(self.solar_sensor_id, today_solar_live, self.monthly_solar_kwh)
-        daily_export = extract_daily_series(self.export_sensor_id, today_export_live, self.monthly_export_kwh)
+        daily_import = build_daily_series(daily_import_sums, today_import_live, self.monthly_import_kwh)
+        daily_solar = build_daily_series(daily_solar_sums, today_solar_live, self.monthly_solar_kwh)
+        daily_export = build_daily_series(daily_export_sums, today_export_live, self.monthly_export_kwh)
 
-        # Guarantee self-consumption doesn't exceed production
-        for idx in range(30):
-            if daily_export[idx] > daily_solar[idx]:
-                daily_export[idx] = daily_solar[idx]
+        # Scale past peak/off-peak and solar savings if total monthly import conservation factor applies
+        past_import_sum = past_peak_import_kwh + past_offpeak_import_kwh
+        target_past_import = max(0.0, self.monthly_import_kwh - today_import_live)
+        if past_import_sum > 0.0 and abs(past_import_sum - target_past_import) > 0.01:
+            imp_scale = target_past_import / past_import_sum
+            past_peak_import_kwh *= imp_scale
+            past_offpeak_import_kwh *= imp_scale
+            past_peak_base_cost_thb *= imp_scale
+            past_offpeak_base_cost_thb *= imp_scale
+
+        past_solar_sum = sum(daily_solar[:current_day - 1]) if current_day > 1 else 0.0
+        target_past_solar = max(0.0, self.monthly_solar_kwh - today_solar_live)
+        if past_solar_sum > 0.0 and abs(past_solar_sum - target_past_solar) > 0.01:
+            sol_scale = target_past_solar / past_solar_sum
+            past_solar_savings_thb *= sol_scale
 
         res_data = {
             "daily_import_kwh_history": daily_import,
             "daily_solar_kwh_history": daily_solar,
             "daily_export_kwh_history": daily_export,
+            "past_peak_import_kwh": past_peak_import_kwh,
+            "past_offpeak_import_kwh": past_offpeak_import_kwh,
+            "past_peak_base_cost_thb": past_peak_base_cost_thb,
+            "past_offpeak_base_cost_thb": past_offpeak_base_cost_thb,
+            "past_solar_savings_thb": past_solar_savings_thb,
         }
         if self.monthly_import_kwh > 0.0:
             self._cached_recorder_history = res_data
@@ -1265,88 +1329,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lifetime_solar_revenue_thb = self.lifetime_export_kwh * sellback_rate
         lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + lifetime_solar_revenue_thb
 
-        # 1. Calculate Accrued Cost to Date for actual consumption consumed so far
-        accrued_ft_charge = self.monthly_import_kwh * ft_rate
-        accrued_base_cost = 0.0
-        service_charge = 38.22
-
-        if category == TARIFF_1_1:
-            service_charge = TARIFF_1_1_SERVICE_CHARGE
-            if self.monthly_import_kwh <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
-                accrued_base_cost = 0.0
-            else:
-                accrued_base_cost = self.calculate_tiered_cost(self.monthly_import_kwh, TARIFF_1_1_TIERS)
-
-        elif category == TARIFF_1_2:
-            service_charge = TARIFF_1_2_SERVICE_CHARGE
-            accrued_base_cost = self.calculate_tiered_cost(self.monthly_import_kwh, self.active_tiered_1_2_tiers)
-
-        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            service_charge = TARIFF_1_3_1_SERVICE_CHARGE if category == TARIFF_1_3_1 else TARIFF_1_3_2_SERVICE_CHARGE
-            # Solar households offset daytime peak load, so grid import is predominantly off-peak (80%)
-            peak_ratio = 0.20 if self.monthly_solar_kwh > 5.0 else 0.40
-            offpeak_ratio = 1.0 - peak_ratio
-            accrued_base_cost = ((self.monthly_import_kwh * peak_ratio) * self.active_tou_peak_rate) + (
-                (self.monthly_import_kwh * offpeak_ratio) * self.active_tou_offpeak_rate
-            )
-
-        # Accrued bill to date prorates the fixed monthly service charge proportionally across continuous elapsed days
-        billing_start_dt = self._get_billing_start_datetime(now)
-        elapsed_sec = max(60.0, (now - billing_start_dt).total_seconds())
-        elapsed_days_fraction = max(0.04, elapsed_sec / 86400.0)
-
-        prorated_service_charge = (service_charge / 30.0) * min(30.0, elapsed_days_fraction)
-        accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
-        accrued_vat_amount = accrued_subtotal * VAT_RATE
-        monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
-
-        # 2. Project 30-day monthly usage based on continuous fractional run-rate (zero midnight sawtooth)
-        projected_monthly_import = (self.monthly_import_kwh / elapsed_days_fraction) * 30.0
-
-        monthly_ft_charge = projected_monthly_import * ft_rate
-        base_cost = 0.0
-
-        if category == TARIFF_1_1:
-            if projected_monthly_import <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
-                base_cost = 0.0
-            else:
-                base_cost = self.calculate_tiered_cost(projected_monthly_import, TARIFF_1_1_TIERS)
-
-        elif category == TARIFF_1_2:
-            base_cost = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
-
-        elif category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            peak_ratio = 0.20 if self.monthly_solar_kwh > 5.0 else 0.40
-            offpeak_ratio = 1.0 - peak_ratio
-            base_cost = ((projected_monthly_import * peak_ratio) * self.active_tou_peak_rate) + (
-                (projected_monthly_import * offpeak_ratio) * self.active_tou_offpeak_rate
-            )
-
-        subtotal = base_cost + service_charge + monthly_ft_charge
-        vat_amount = subtotal * VAT_RATE
-        monthly_estimated_bill = subtotal + vat_amount
-
-        if category in (TARIFF_1_1, TARIFF_1_2):
-            phantom_base = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
-                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
-            )
-            phantom_subtotal = phantom_base + TARIFF_1_3_2_SERVICE_CHARGE + monthly_ft_charge
-            phantom_total_bill = phantom_subtotal * (1 + VAT_RATE)
-            opposing_tariff_name = "TOU 1.3.2"
-        else:
-            phantom_base = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
-            phantom_subtotal = phantom_base + TARIFF_1_2_SERVICE_CHARGE + monthly_ft_charge
-            phantom_total_bill = phantom_subtotal * (1 + VAT_RATE)
-            opposing_tariff_name = "Tiered 1.2"
-
-        potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
-
-        # 3. Setup economic parameters for BESS and outage calculations
-        bess_capacity = float(self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
-        outage_hours = self.total_outage_seconds / 3600.0
-        economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
-
-        # Fetch 30-day historical daily arrays from Python engine with live today values
+        # 1. Fetch 30-day historical hourly LTS arrays and past deterministic totals from Home Assistant recorder
         recorder_history = await self._async_fetch_recorder_history(
             now,
             self.today_import_kwh,
@@ -1370,6 +1353,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         total_shifted_savings = 0.0
         daily_export_history = recorder_history.get("daily_export_kwh_history", [])
         daily_import_history = recorder_history.get("daily_import_kwh_history", [])
+        daily_solar_history = recorder_history.get("daily_solar_kwh_history", [])
         start_dt = self._get_billing_start_datetime(now)
 
         for idx in range(min(30, len(daily_export_history))):
@@ -1394,66 +1378,97 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.bess_simulated_savings_thb = total_shifted_savings
 
-        # Calculate past days solar self-consumption savings in 2 passes (Peak / Off-Peak)
-        total_solar_savings_thb = 0.0
-        curr_day_val = max(1, current_day)
-        
-        daily_solar_history = recorder_history.get("daily_solar_kwh_history", [])
-        daily_export_history = recorder_history.get("daily_export_kwh_history", [])
-        
-        for idx in range(min(30, len(daily_solar_history))):
-            day_num = idx + 1
-            # Only count completed past days
-            if day_num < curr_day_val:
-                sol_kwh = daily_solar_history[idx]
-                exp_kwh = daily_export_history[idx] if idx < len(daily_export_history) else 0.0
-                
-                # Check for invalid values and default to daily averages
-                if sol_kwh is None or sol_kwh < 0.001:
-                    sol_kwh = self.monthly_solar_kwh / curr_day_val
-                if exp_kwh is None or exp_kwh < 0.0:
-                    exp_kwh = self.monthly_export_kwh / curr_day_val
-                
-                day_self = max(0.0, sol_kwh - exp_kwh)
-                day_date = (start_dt + timedelta(days=idx)).date()
-                is_weekday = day_date.weekday() < 5
-                
-                if category in (TARIFF_1_3_1, TARIFF_1_3_2):
-                    if is_weekday:
-                        day_peak_self = 0.90 * day_self
-                        day_offpeak_self = 0.10 * day_self
-                    else:
-                        day_peak_self = 0.0
-                        day_offpeak_self = 1.0 * day_self
-                    
-                    day_savings = (day_peak_self * self.active_tou_peak_rate) + (day_offpeak_self * self.active_tou_offpeak_rate)
-                else:
-                    day_savings = day_self * marginal_rate
-                
-                total_solar_savings_thb += day_savings
+        # 2. Extract past completed days from 100% hard hourly LTS recorder data
+        past_peak_import_kwh = float(recorder_history.get("past_peak_import_kwh", 0.0))
+        past_offpeak_import_kwh = float(recorder_history.get("past_offpeak_import_kwh", 0.0))
+        past_peak_base_cost_thb = float(recorder_history.get("past_peak_base_cost_thb", 0.0))
+        past_offpeak_base_cost_thb = float(recorder_history.get("past_offpeak_base_cost_thb", 0.0))
+        past_solar_savings_thb = float(recorder_history.get("past_solar_savings_thb", 0.0))
 
-        # Add today's incremental self-consumption savings directly from today's live meters
-        today_incremental_self = max(0.0, self.today_solar_kwh - self.today_export_kwh)
+        # 3. Calculate today's live incremental portion
+        today_import_kwh = self.today_import_kwh
+        today_solar_kwh = self.today_solar_kwh
+        today_export_kwh = self.today_export_kwh
+        today_self_kwh = max(0.0, today_solar_kwh - today_export_kwh)
+
         today_date = now.date()
         is_today_weekday = today_date.weekday() < 5
-        
-        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            if is_today_weekday:
-                today_peak_self = 0.90 * today_incremental_self
-                today_offpeak_self = 0.10 * today_incremental_self
-            else:
+        is_today_holiday = bool(self.th_holidays and today_date in self.th_holidays)
+
+        if not is_today_weekday or is_today_holiday:
+            today_peak_import = 0.0
+            today_offpeak_import = today_import_kwh
+            today_peak_self = 0.0
+            today_offpeak_self = today_self_kwh
+        else:
+            curr_hour = now.hour + (now.minute / 60.0)
+            if curr_hour < 9.0:
+                today_peak_import = 0.0
+                today_offpeak_import = today_import_kwh
                 today_peak_self = 0.0
-                today_offpeak_self = 1.0 * today_incremental_self
-            
+                today_offpeak_self = today_self_kwh
+            elif 9.0 <= curr_hour < 22.0:
+                elapsed_peak_hours = curr_hour - 9.0
+                total_elapsed_hours = max(1.0, curr_hour)
+                peak_time_ratio = min(1.0, elapsed_peak_hours / total_elapsed_hours)
+                today_peak_import = today_import_kwh * peak_time_ratio
+                today_offpeak_import = max(0.0, today_import_kwh - today_peak_import)
+                today_peak_self = today_self_kwh * 0.90
+                today_offpeak_self = today_self_kwh * 0.10
+            else:
+                today_peak_import = today_import_kwh * (13.0 / 24.0)
+                today_offpeak_import = max(0.0, today_import_kwh - today_peak_import)
+                today_peak_self = today_self_kwh * 0.90
+                today_offpeak_self = today_self_kwh * 0.10
+
+        today_peak_cost = today_peak_import * self.active_tou_peak_rate
+        today_offpeak_cost = today_offpeak_import * self.active_tou_offpeak_rate
+
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
             today_savings = (today_peak_self * self.active_tou_peak_rate) + (today_offpeak_self * self.active_tou_offpeak_rate)
         else:
-            today_savings = today_incremental_self * marginal_rate
+            today_savings = today_self_kwh * marginal_rate
 
-        total_solar_savings_thb += today_savings
-        
-        # Update self properties and solar total benefits
-        self.monthly_solar_savings_thb = total_solar_savings_thb
+        # 4. Total Accrued Usage, Base Costs, and Bill to Date
+        total_peak_import_kwh = past_peak_import_kwh + today_peak_import
+        total_offpeak_import_kwh = past_offpeak_import_kwh + today_offpeak_import
+        self.monthly_tou_peak_import_kwh = total_peak_import_kwh
+        self.monthly_tou_offpeak_import_kwh = total_offpeak_import_kwh
+        self.phantom_tou_peak_kwh = total_peak_import_kwh
+        self.phantom_tou_offpeak_kwh = total_offpeak_import_kwh
 
+        if category in (TARIFF_1_3_1, TARIFF_1_3_2):
+            accrued_base_cost = past_peak_base_cost_thb + past_offpeak_base_cost_thb + today_peak_cost + today_offpeak_cost
+            self.monthly_solar_savings_thb = past_solar_savings_thb + today_savings
+        elif category == TARIFF_1_1:
+            if self.monthly_import_kwh <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
+                accrued_base_cost = 0.0
+            else:
+                accrued_base_cost = self.calculate_tiered_cost(self.monthly_import_kwh, TARIFF_1_1_TIERS)
+            self.monthly_solar_savings_thb = (self.monthly_solar_kwh - self.monthly_export_kwh) * marginal_rate
+        elif category == TARIFF_1_2:
+            accrued_base_cost = self.calculate_tiered_cost(self.monthly_import_kwh, self.active_tiered_1_2_tiers)
+            self.monthly_solar_savings_thb = (self.monthly_solar_kwh - self.monthly_export_kwh) * marginal_rate
+
+        accrued_ft_charge = self.monthly_import_kwh * ft_rate
+        service_charge = (
+            TARIFF_1_1_SERVICE_CHARGE if category == TARIFF_1_1 else (
+                TARIFF_1_2_SERVICE_CHARGE if category == TARIFF_1_2 else (
+                    TARIFF_1_3_1_SERVICE_CHARGE if category == TARIFF_1_3_1 else TARIFF_1_3_2_SERVICE_CHARGE
+                )
+            )
+        )
+
+        billing_start_dt = self._get_billing_start_datetime(now)
+        elapsed_sec = max(60.0, (now - billing_start_dt).total_seconds())
+        elapsed_days_fraction = max(0.04, elapsed_sec / 86400.0)
+
+        prorated_service_charge = (service_charge / 30.0) * min(30.0, elapsed_days_fraction)
+        accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
+        accrued_vat_amount = accrued_subtotal * VAT_RATE
+        monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
+
+        # Lifetime Continuous Accumulator Updates
         lifetime_self_consumption = max(0.0, self.lifetime_solar_kwh - self.lifetime_export_kwh)
         if category in (TARIFF_1_3_1, TARIFF_1_3_2):
             lifetime_savings_rate = (0.70 * self.active_tou_peak_rate) + (0.30 * self.active_tou_offpeak_rate)
@@ -1461,69 +1476,70 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lifetime_savings_rate = marginal_rate
 
         self.lifetime_solar_savings_thb = lifetime_self_consumption * lifetime_savings_rate
-        monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + (self.monthly_export_kwh * sellback_rate)
-        lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + (self.lifetime_export_kwh * sellback_rate)
+        monthly_solar_revenue_thb = self.monthly_export_kwh * sellback_rate
+        monthly_total_solar_benefit_thb = self.monthly_solar_savings_thb + monthly_solar_revenue_thb
+        lifetime_solar_revenue_thb = self.lifetime_export_kwh * sellback_rate
+        lifetime_total_solar_benefit_thb = self.lifetime_solar_savings_thb + lifetime_solar_revenue_thb
 
-        # Calculate daily Peak and Off-Peak grid import separately in 2 passes
-        total_peak_import_kwh = 0.0
-        total_offpeak_import_kwh = 0.0
-        
-        daily_import_history = recorder_history.get("daily_import_kwh_history", [])
-        
-        for idx in range(min(30, len(daily_import_history))):
-            day_num = idx + 1
-            if day_num < curr_day_val:
-                imp_kwh = daily_import_history[idx]
-                sol_kwh = daily_solar_history[idx] if idx < len(daily_solar_history) else 0.0
-                
-                if imp_kwh is None or imp_kwh < 0.0:
-                    imp_kwh = self.monthly_import_kwh / curr_day_val
-                
-                day_date = (start_dt + timedelta(days=idx)).date()
-                is_weekday = day_date.weekday() < 5
-                
-                if is_weekday:
-                    has_solar = sol_kwh is not None and sol_kwh > 1.0
-                    peak_share = 0.20 if has_solar else 0.45
-                    day_peak = imp_kwh * peak_share
-                    day_offpeak = imp_kwh * (1.0 - peak_share)
-                else:
-                    day_peak = 0.0
-                    day_offpeak = imp_kwh
-                
-                total_peak_import_kwh += day_peak
-                total_offpeak_import_kwh += day_offpeak
-
-        # Add today's incremental import directly from today's live meter
-        today_incremental_import = self.today_import_kwh
-        today_date = now.date()
-        is_today_weekday = today_date.weekday() < 5
-        
-        if is_today_weekday:
-            has_solar_today = self.today_solar_kwh > 0.5 or self.monthly_solar_kwh > 1.0
-            peak_share_today = 0.20 if has_solar_today else 0.45
-            today_peak = today_incremental_import * peak_share_today
-            today_offpeak = today_incremental_import * (1.0 - peak_share_today)
+        # 5. Project 30-day Month-End Totals for Unelapsed Days
+        # Derive empirical weekday peak ratio from hard recorded historical data
+        past_weekdays_import = past_peak_import_kwh + past_offpeak_import_kwh
+        if past_weekdays_import > 0 and past_peak_import_kwh > 0:
+            empirical_weekday_peak_ratio = min(0.60, max(0.20, past_peak_import_kwh / past_weekdays_import))
         else:
-            today_peak = 0.0
-            today_offpeak = today_incremental_import
-        
-        total_peak_import_kwh += today_peak
-        total_offpeak_import_kwh += today_offpeak
-        
-        self.monthly_tou_peak_import_kwh = total_peak_import_kwh
-        self.monthly_tou_offpeak_import_kwh = total_offpeak_import_kwh
-        self.phantom_tou_peak_kwh = total_peak_import_kwh
-        self.phantom_tou_offpeak_kwh = total_offpeak_import_kwh
-        
+            empirical_weekday_peak_ratio = 0.385
+
+        current_cycle_day = min(30, max(1, int(elapsed_days_fraction)))
+        remaining_cycle_days = max(0, 30 - current_cycle_day)
+        avg_daily_import = (self.monthly_import_kwh / elapsed_days_fraction) if elapsed_days_fraction > 0 else 0.0
+
+        forward_peak_import_kwh = 0.0
+        forward_offpeak_import_kwh = 0.0
+        for r_idx in range(remaining_cycle_days):
+            f_date = (now + timedelta(days=r_idx + 1)).date()
+            f_is_weekday = f_date.weekday() < 5
+            f_is_holiday = bool(self.th_holidays and f_date in self.th_holidays)
+            if f_is_weekday and not f_is_holiday:
+                forward_peak_import_kwh += avg_daily_import * empirical_weekday_peak_ratio
+                forward_offpeak_import_kwh += avg_daily_import * (1.0 - empirical_weekday_peak_ratio)
+            else:
+                forward_offpeak_import_kwh += avg_daily_import
+
+        projected_monthly_import = self.monthly_import_kwh + (avg_daily_import * remaining_cycle_days)
+        projected_peak_import = total_peak_import_kwh + forward_peak_import_kwh
+        projected_offpeak_import = total_offpeak_import_kwh + forward_offpeak_import_kwh
+
+        monthly_ft_charge = projected_monthly_import * ft_rate
         if category in (TARIFF_1_3_1, TARIFF_1_3_2):
-            accrued_base_cost = (total_peak_import_kwh * self.active_tou_peak_rate) + (
-                total_offpeak_import_kwh * self.active_tou_offpeak_rate
+            base_cost = (projected_peak_import * self.active_tou_peak_rate) + (
+                projected_offpeak_import * self.active_tou_offpeak_rate
             )
-            # Recompute total accrued bill
-            accrued_subtotal = accrued_base_cost + prorated_service_charge + accrued_ft_charge
-            accrued_vat_amount = accrued_subtotal * VAT_RATE
-            monthly_accrued_bill = accrued_subtotal + accrued_vat_amount
+        elif category == TARIFF_1_1:
+            if projected_monthly_import <= TARIFF_1_1_PSO_SUBSIDY_LIMIT:
+                base_cost = 0.0
+            else:
+                base_cost = self.calculate_tiered_cost(projected_monthly_import, TARIFF_1_1_TIERS)
+        elif category == TARIFF_1_2:
+            base_cost = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
+
+        subtotal = base_cost + service_charge + monthly_ft_charge
+        vat_amount = subtotal * VAT_RATE
+        monthly_estimated_bill = subtotal + vat_amount
+
+        if category in (TARIFF_1_1, TARIFF_1_2):
+            phantom_base = ((projected_monthly_import * 0.4) * self.active_tou_peak_rate) + (
+                (projected_monthly_import * 0.6) * self.active_tou_offpeak_rate
+            )
+            phantom_subtotal = phantom_base + TARIFF_1_3_2_SERVICE_CHARGE + monthly_ft_charge
+            phantom_total_bill = phantom_subtotal * (1 + VAT_RATE)
+            opposing_tariff_name = "TOU 1.3.2"
+        else:
+            phantom_base = self.calculate_tiered_cost(projected_monthly_import, self.active_tiered_1_2_tiers)
+            phantom_subtotal = phantom_base + TARIFF_1_2_SERVICE_CHARGE + monthly_ft_charge
+            phantom_total_bill = phantom_subtotal * (1 + VAT_RATE)
+            opposing_tariff_name = "Tiered 1.2"
+
+        potential_tariff_diff_thb = phantom_total_bill - monthly_estimated_bill
 
         # 4. Project 30-day monthly solar generation, export, savings, and bill without solar
         # Check if live multi-day Solcast forecast sensors are available in Home Assistant
