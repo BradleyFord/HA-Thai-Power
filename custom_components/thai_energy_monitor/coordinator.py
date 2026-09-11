@@ -187,6 +187,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.outage_start_time: datetime | None = None
         self.total_outage_seconds: float = 0.0
         self.outage_count: int = 0
+        self.economic_outage_loss_thb: float = 0.0
         self.outage_history: list[dict[str, Any]] = []
         self._has_seen_active_grid: bool = False
 
@@ -258,6 +259,16 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.last_month_bill_thb = float(data["last_month_bill_thb"])
                 if data.get("last_month_import_kwh", 0) > self.last_month_import_kwh:
                     self.last_month_import_kwh = float(data["last_month_import_kwh"])
+
+                # Restore outage tracking metrics
+                if data.get("total_outage_seconds") is not None and float(data.get("total_outage_seconds", 0)) > self.total_outage_seconds:
+                    self.total_outage_seconds = float(data["total_outage_seconds"])
+                if data.get("outage_count") is not None and int(data.get("outage_count", 0)) > self.outage_count:
+                    self.outage_count = int(data["outage_count"])
+                if data.get("economic_outage_loss_thb") is not None and float(data.get("economic_outage_loss_thb", 0)) > self.economic_outage_loss_thb:
+                    self.economic_outage_loss_thb = float(data["economic_outage_loss_thb"])
+                if data.get("outage_history") and isinstance(data["outage_history"], list):
+                    self.outage_history = list(data["outage_history"])
         except Exception as err:
             _LOGGER.debug("Could not load storage data: %s", err)
 
@@ -292,6 +303,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "lifetime_export_kwh": self.lifetime_export_kwh,
                 "last_month_bill_thb": self.last_month_bill_thb,
                 "last_month_import_kwh": self.last_month_import_kwh,
+                "total_outage_seconds": self.total_outage_seconds,
+                "outage_count": self.outage_count,
+                "economic_outage_loss_thb": self.economic_outage_loss_thb,
+                "outage_history": self.outage_history,
             }
             await self._store.async_save(data)
         except Exception as err:
@@ -1712,6 +1727,12 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (saved_bill_amount / max(1.0, projected_bill_without_solar_thb)) * 100.0
         )
 
+        # Grid Outage Economic Impact Analysis
+        # Assume average baseline household load demand of 1.5 kW unserved power during grid failure
+        outage_hours = self.total_outage_seconds / 3600.0
+        economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
+        self.economic_outage_loss_thb = economic_outage_loss
+
         self.hass.async_create_task(self._async_save_storage())
 
         return {
@@ -1775,6 +1796,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Predictive & Simulation Analytics
             "opposing_tariff_name": opposing_tariff_name,
             "phantom_total_bill": round(phantom_total_bill, 2),
+            "potential_tariff_diff_thb": round(potential_tariff_diff_thb, 2),
             "bess_simulated_savings_thb": round(self.bess_simulated_savings_thb, 2),
             "bess_capacity_kwh": bess_capacity,
             "bess_capex_cost": float(self.config_data.get("bess_capex_cost") or getattr(self, "bess_capex_cost", 50000.0)),
@@ -1786,7 +1808,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "is_grid_outage": self.is_grid_outage,
             "outage_count": self.outage_count,
             "total_outage_seconds": self.total_outage_seconds,
-            "economic_outage_loss_thb": round(economic_outage_loss, 2),
+            "economic_outage_loss_thb": round(self.economic_outage_loss_thb, 2),
             "outage_history": self.outage_history,
 
             # Last Month Archived Summary Stats
@@ -2117,11 +2139,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_updated_data(new_data)
 
     def reset_outage_statistics(self) -> None:
-        """Reset grid outage incident counts, cumulative downtime, and history log."""
+        """Reset grid outage incident counts, cumulative downtime, economic cost, and history log."""
         self.is_grid_outage = False
         self.outage_start_time = None
         self.total_outage_seconds = 0.0
         self.outage_count = 0
+        self.economic_outage_loss_thb = 0.0
         self.outage_history = []
         _LOGGER.info("Reset grid outage tracking statistics to zero")
-        self.async_set_updated_data(self.data)
+        if self.data:
+            self.data["is_grid_outage"] = False
+            self.data["outage_count"] = 0
+            self.data["total_outage_seconds"] = 0.0
+            self.data["economic_outage_loss_thb"] = 0.0
+            self.data["outage_history"] = []
+            self.async_set_updated_data(self.data)

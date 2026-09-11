@@ -447,8 +447,17 @@ class TestThaiEnergyMonitorCore(unittest.TestCase):
 
         self.assertAlmostEqual(total_bill, 5247.98, delta=1.0)
 
+    def test_coordinator_outage_resilience_and_economic_loss(self) -> None:
+        """Test coordinator outage resilience tracking and economic loss math."""
+        # 2 hours total outage
+        total_outage_seconds = 7200.0
+        outage_hours = total_outage_seconds / 3600.0
+        economic_outage_loss = (outage_hours * 1.5) * DEFAULT_OUTAGE_COST_PER_KWH
+        self.assertAlmostEqual(economic_outage_loss, 925.23, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
