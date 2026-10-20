@@ -23,6 +23,7 @@ from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -66,6 +67,10 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Created once at import time (integration modules load in an executor) so the
+# tz database is never read from disk on the event loop.
+BKK_TZ = zoneinfo.ZoneInfo("Asia/Bangkok")
 
 
 def parse_stat_datetime(start_val: Any, tz: zoneinfo.ZoneInfo) -> datetime:
@@ -224,9 +229,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self.monthly_export_kwh = float(data["monthly_export_kwh"])
 
                 # Restore today's live baselines if stored record is from today
-                bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
                 try:
-                    today_str = now.astimezone(bkk_tz).date().isoformat()
+                    today_str = now.astimezone(BKK_TZ).date().isoformat()
                 except Exception:
                     today_str = now.date().isoformat()
                 stored_today_str = data.get("today_date")
@@ -276,9 +280,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Save billing baselines and accumulators to Home Assistant storage."""
         try:
             now = dt_util.now()
-            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
             try:
-                today_str = now.astimezone(bkk_tz).date().isoformat()
+                today_str = now.astimezone(BKK_TZ).date().isoformat()
             except Exception:
                 today_str = now.date().isoformat()
 
@@ -321,8 +324,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]))
         await self._async_load_storage()
         self.async_add_listener(self._async_handle_update)
-        async_track_state_change_event(
-            self.hass, source_entities, self._async_sensor_state_listener
+        # Unsubscribe automatically when the config entry unloads/reloads
+        self.entry.async_on_unload(
+            async_track_state_change_event(
+                self.hass, source_entities, self._async_sensor_state_listener
+            )
         )
         await self.async_load_holidays()
 
@@ -371,8 +377,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Uses Home Assistant Workday integration if available, falling back to calendar rules.
         """
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-        bkk_dt = parse_stat_datetime(dt, bkk_tz)
+        bkk_dt = parse_stat_datetime(dt, BKK_TZ)
 
         # 1. Check HA Workday Integration binary sensor (Highest Precedence)
         workday_state = self._get_workday_state()
@@ -469,20 +474,19 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _get_billing_start_datetime(self, now: datetime) -> datetime:
         """Calculate exact datetime for the start of the current billing cycle."""
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
-            bkk_now = now.astimezone(bkk_tz)
+            bkk_now = now.astimezone(BKK_TZ)
         except Exception:
             bkk_now = now
 
         target_day = int(self.config_data.get(CONF_BILLING_DAY, 1))
 
         if bkk_now.day >= target_day:
-            return datetime(bkk_now.year, bkk_now.month, target_day, 0, 0, 0, tzinfo=bkk_tz)
+            return datetime(bkk_now.year, bkk_now.month, target_day, 0, 0, 0, tzinfo=BKK_TZ)
         else:
             prev_month = bkk_now.month - 1 if bkk_now.month > 1 else 12
             prev_year = bkk_now.year if bkk_now.month > 1 else bkk_now.year - 1
-            return datetime(prev_year, prev_month, target_day, 0, 0, 0, tzinfo=bkk_tz)
+            return datetime(prev_year, prev_month, target_day, 0, 0, 0, tzinfo=BKK_TZ)
 
     async def _async_get_sensor_baseline(self, entity_id: str, target_dt: datetime) -> float | None:
         """Fetch historical cumulative meter reading at target_dt from HA Long-Term Statistics or recorder."""
@@ -503,16 +507,15 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 entity_stats = stats_dict.get(entity_id, [])
                 if entity_stats:
-                    bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
 
                     def _get_dt(s: dict[str, Any]) -> datetime:
                         start_val = s.get("start")
                         if isinstance(start_val, (int, float)):
                             if start_val > 1e11:
                                 start_val = start_val / 1000.0
-                            return datetime.fromtimestamp(start_val, tz=bkk_tz)
+                            return datetime.fromtimestamp(start_val, tz=BKK_TZ)
                         elif isinstance(start_val, datetime):
-                            return start_val.astimezone(bkk_tz)
+                            return start_val.astimezone(BKK_TZ)
                         return target_dt
 
                     best_stat = min(entity_stats, key=lambda s: abs((_get_dt(s) - target_dt).total_seconds()))
@@ -613,8 +616,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         target_billing_day = int(self.config_data.get(CONF_BILLING_DAY, 1))
         
         try:
-            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-            today = now.astimezone(bkk_tz).date()
+            today = now.astimezone(BKK_TZ).date()
         except Exception:
             today = now.date()
 
@@ -645,12 +647,11 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _get_today_start_datetime(self, now: datetime) -> datetime:
         """Return datetime representing start of the current calendar day in Bangkok time."""
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
-            bkk_now = now.astimezone(bkk_tz)
+            bkk_now = now.astimezone(BKK_TZ)
         except Exception:
             bkk_now = now
-        return datetime(bkk_now.year, bkk_now.month, bkk_now.day, 0, 0, 0, tzinfo=bkk_tz)
+        return datetime(bkk_now.year, bkk_now.month, bkk_now.day, 0, 0, 0, tzinfo=BKK_TZ)
 
     def _check_midnight_reset(
         self,
@@ -661,8 +662,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> None:
         """Check for daily midnight transition and reset today live accumulators."""
         try:
-            bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-            today = now.astimezone(bkk_tz).date()
+            today = now.astimezone(BKK_TZ).date()
         except Exception:
             today = now.date()
 
@@ -687,9 +687,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (ValueError, TypeError):
             billing_day = 1
 
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
-            local_now = now_dt.astimezone(bkk_tz)
+            local_now = now_dt.astimezone(BKK_TZ)
         except Exception:
             local_now = now_dt
 
@@ -816,14 +815,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             return self._cached_recorder_history
 
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
-            bkk_now = now.astimezone(bkk_tz)
+            bkk_now = now.astimezone(BKK_TZ)
         except Exception:
             bkk_now = now
 
         start_dt = self._get_billing_start_datetime(now)
-        today_start_dt = datetime(bkk_now.year, bkk_now.month, bkk_now.day, 0, 0, 0, tzinfo=bkk_tz)
+        today_start_dt = datetime(bkk_now.year, bkk_now.month, bkk_now.day, 0, 0, 0, tzinfo=BKK_TZ)
         end_dt = now
 
         elapsed_sec = max(60.0, (now - start_dt).total_seconds())
@@ -861,9 +859,9 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if isinstance(start_val, (int, float)):
                     if start_val > 1e11:
                         start_val = start_val / 1000.0
-                    stat_dt = datetime.fromtimestamp(start_val, tz=bkk_tz)
+                    stat_dt = datetime.fromtimestamp(start_val, tz=BKK_TZ)
                 elif isinstance(start_val, datetime):
-                    stat_dt = start_val.astimezone(bkk_tz)
+                    stat_dt = start_val.astimezone(BKK_TZ)
                 else:
                     continue
                 stat_dt_hour = stat_dt.replace(minute=0, second=0, microsecond=0)
@@ -1087,9 +1085,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if duration >= 10.0:
                         self.total_outage_seconds += duration
 
-                        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
-                        local_start = self.outage_start_time.astimezone(bkk_tz)
-                        local_end = now.astimezone(bkk_tz)
+                        local_start = self.outage_start_time.astimezone(BKK_TZ)
+                        local_end = now.astimezone(BKK_TZ)
 
                         mins = int(duration // 60)
                         secs = int(duration % 60)
@@ -1128,9 +1125,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (ValueError, TypeError):
             curr_solar = 0.0
 
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         try:
-            bkk_now = now.astimezone(bkk_tz)
+            bkk_now = now.astimezone(BKK_TZ)
         except Exception:
             bkk_now = now
         
@@ -1828,7 +1824,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_calculate_12_month_lookback(self) -> None:
         """Query hourly statistics from HA database over past year and simulate tiered vs TOU costs."""
         now = dt_util.now()
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
         
         # Query hourly stats for grid import sensor over the past 365 days
         def _fetch_lookback_stats() -> dict[str, list[dict[str, Any]]]:
@@ -1843,15 +1838,13 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     types={"sum", "state", "change"},
                 )
             except Exception as err:
-                _LOGGER.debug("Could not query 12-month hourly statistics: %s", err)
-                return {}
+                raise HomeAssistantError(
+                    f"Could not query 12-month hourly statistics: {err}"
+                ) from err
 
-        import_stats = []
-        try:
-            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_lookback_stats)
-            import_stats = stats_dict.get(self.import_sensor_id, [])
-        except Exception as err:
-            _LOGGER.debug("Executor error for 12-month stats: %s", err)
+        # Errors propagate so the service call fails visibly
+        stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_lookback_stats)
+        import_stats = stats_dict.get(self.import_sensor_id, [])
 
         # Sort stats chronologically
         import_stats = sorted(import_stats, key=get_stat_sort_key)
@@ -1861,7 +1854,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         for i in range(len(import_stats)):
             entry = import_stats[i]
-            local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
+            local_dt = parse_stat_datetime(entry.get("start"), BKK_TZ)
             month_key = local_dt.strftime("%Y-%m")
             
             # Determine change in kWh during this hour
@@ -1890,27 +1883,10 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 monthly_groups[month_key]["peak"] += kwh
 
-        # Backfill any missing months across the past 12 billing months
-        import random
-        random.seed("lookback_12m")
-        for m_offset in range(12, 0, -1):
-            m_date = now - timedelta(days=m_offset * 30)
-            m_key = m_date.strftime("%Y-%m")
-            if m_key not in monthly_groups:
-                month_num = m_date.month
-                season_mult = 1.35 if month_num in (4, 5, 6) else (0.80 if month_num in (12, 1) else 1.0)
-                total_kwh = 550.0 * season_mult * random.uniform(0.9, 1.1)
-                peak_kwh = total_kwh * random.uniform(0.38, 0.45)
-                offpeak_kwh = total_kwh - peak_kwh
-                monthly_groups[m_key] = {
-                    "total": round(total_kwh, 3),
-                    "peak": round(peak_kwh, 3),
-                    "offpeak": round(offpeak_kwh, 3),
-                }
+        # Only months with real recorder statistics are reported; missing months are omitted
 
         lookback_data = []
         ft_rate = float(self.config_data.get(CONF_FT_RATE, DEFAULT_FT_RATE))
-        VAT_RATE = 0.07
 
         # Enforce strictly the most recent 12 billing months
         for month_key in sorted(monthly_groups.keys())[-12:]:
@@ -1954,7 +1930,6 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         taking into account battery capacity, round-trip efficiency (90%), and peak vs sellback rates.
         """
         now = dt_util.now()
-        bkk_tz = zoneinfo.ZoneInfo("Asia/Bangkok")
 
         # Query hourly stats for grid export and import sensors over the past 365 days
         def _fetch_bess_stats() -> dict[str, list[dict[str, Any]]]:
@@ -1970,19 +1945,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     types={"sum", "state", "change"},
                 )
             except Exception as err:
-                _LOGGER.debug("Could not query 12-month BESS statistics: %s", err)
-                return {}
+                raise HomeAssistantError(
+                    f"Could not query 12-month BESS statistics: {err}"
+                ) from err
 
+        # Errors propagate so the service call fails visibly
         export_stats = []
         import_stats = []
-        try:
-            stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_bess_stats)
-            if self.export_sensor_id:
-                export_stats = stats_dict.get(self.export_sensor_id, [])
-            if self.import_sensor_id:
-                import_stats = stats_dict.get(self.import_sensor_id, [])
-        except Exception as err:
-            _LOGGER.debug("Executor error for BESS stats: %s", err)
+        stats_dict = await get_instance(self.hass).async_add_executor_job(_fetch_bess_stats)
+        if self.export_sensor_id:
+            export_stats = stats_dict.get(self.export_sensor_id, [])
+        if self.import_sensor_id:
+            import_stats = stats_dict.get(self.import_sensor_id, [])
 
         # Sort stats chronologically
         export_stats = sorted(export_stats, key=get_stat_sort_key)
@@ -1992,7 +1966,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         daily_export_groups = {}  # "2025-08-15" -> export_kwh
         for i in range(len(export_stats)):
             entry = export_stats[i]
-            local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
+            local_dt = parse_stat_datetime(entry.get("start"), BKK_TZ)
             day_key = local_dt.strftime("%Y-%m-%d")
 
             kwh = entry.get("change") or entry.get("sum_change")
@@ -2015,7 +1989,7 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         daily_import_groups = {}  # "2025-08-15" -> import_kwh
         for i in range(len(import_stats)):
             entry = import_stats[i]
-            local_dt = parse_stat_datetime(entry.get("start"), bkk_tz)
+            local_dt = parse_stat_datetime(entry.get("start"), BKK_TZ)
             day_key = local_dt.strftime("%Y-%m-%d")
 
             kwh = entry.get("change") or entry.get("sum_change")
@@ -2034,26 +2008,18 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 daily_import_groups[day_key] = 0.0
             daily_import_groups[day_key] += kwh
 
-        # Backfill any missing days across the past 365 days so the simulation spans a complete 12 months
-        import random
-        random.seed("bess_lookback_12m")
-        for d_offset in range(365, 0, -1):
-            d_date = now - timedelta(days=d_offset)
-            d_key = d_date.strftime("%Y-%m-%d")
-            month_num = d_date.month
-
-            # Solar is higher in summer (Mar-May) and lower in monsoon (Jul-Oct)
-            season_mult = 1.4 if month_num in (3, 4, 5) else (0.70 if month_num in (8, 9, 10) else 1.0)
-            if d_key not in daily_export_groups:
-                daily_export_groups[d_key] = max(0.0, random.uniform(2.0, 15.0) * season_mult)
-            if d_key not in daily_import_groups:
-                daily_import_groups[d_key] = max(5.0, random.uniform(8.0, 25.0) * (1.3 if month_num in (4, 5, 6) else 1.0))
+        # Only days with real recorder statistics are simulated; missing days are omitted
 
         # Combine all keys
         all_day_keys = sorted(list(set(list(daily_export_groups.keys()) + list(daily_import_groups.keys()))))
 
         # BESS configuration parameters
-        bess_capacity = float(self.config_data.get("bess_capacity_kwh") or self.config_data.get(CONF_BESS_CAPACITY_KWH, 5.0))
+        capacity_cfg = self.config_data.get("bess_capacity_kwh") or self.config_data.get(CONF_BESS_CAPACITY_KWH)
+        if not capacity_cfg:
+            raise HomeAssistantError(
+                "BESS capacity is not configured; run configure_bess first"
+            )
+        bess_capacity = float(capacity_cfg)
         bess_efficiency = 0.90
         grid_charging = bool(self.config_data.get("bess_grid_charging", False))
         tariff_model = self.config_data.get("bess_tariff_model", "tou")
@@ -2081,10 +2047,8 @@ class ThaiEnergyDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             export_kwh = daily_export_groups.get(day_key, 0.0)
             import_kwh = daily_import_groups.get(day_key, 0.0)
 
-            try:
-                day_date = datetime.strptime(day_key, "%Y-%m-%d").date()
-            except Exception:
-                day_date = now.date()
+            # Keys are generated above as %Y-%m-%d, so parsing cannot legitimately fail
+            day_date = datetime.strptime(day_key, "%Y-%m-%d").date()
 
             # Calculate daily savings using the unified daily BESS math
             day_savings = self.calculate_bess_daily_savings(

@@ -14,6 +14,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.helpers.start import async_at_started
 
 from .const import (
     DOMAIN,
@@ -162,8 +164,8 @@ def fetch_latest_ft_rate_sync() -> float | None:
                     if yr < current_year or (yr == current_year and mo <= current_month):
                         return ft_val
                 
-                # Fallback to the absolute latest row if all are in the future
-                return matching_rows[0][2]
+                # No published rate applies to the current month yet
+                return None
                 
     except Exception as err:
         _LOGGER.error("Failed to fetch latest FT rate from MEA Open Data API: %s", err)
@@ -215,8 +217,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     )
 
-    # Trigger background check on startup to ensure alignment with latest rates
-    hass.async_create_task(async_auto_update_ft())
+    # Check once Home Assistant has fully started, so a rate-triggered reload
+    # cannot race this entry's own setup
+    entry.async_on_unload(async_at_started(hass, async_auto_update_ft))
 
     coordinator = ThaiEnergyDataUpdateCoordinator(hass, entry)
     await coordinator.async_setup_listeners()
@@ -294,7 +297,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_request_refresh()
 
     if not hass.services.has_service(DOMAIN, SERVICE_CONFIGURE_BESS):
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_CONFIGURE_BESS,
             async_handle_configure_bess,
@@ -384,7 +388,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.config_entries.async_reload(entry.entry_id)
 
     if not hass.services.has_service(DOMAIN, SERVICE_CONFIGURE_SETTINGS):
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_CONFIGURE_SETTINGS,
             async_handle_configure_settings,
@@ -432,7 +437,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "js_url": f"/thai_energy_ui/panel.js?v={VERSION}",
                 }
             },
-            require_admin=False,
+            require_admin=True,
             update=True,
         )
     except Exception as err:
@@ -453,6 +458,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception:
                 pass
             hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_12_MONTH_LOOKBACK)
+            hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_BESS_LOOKBACK)
             try:
                 hass.services.async_remove(DOMAIN, "configure_bess")
                 hass.services.async_remove(DOMAIN, "configure_settings")

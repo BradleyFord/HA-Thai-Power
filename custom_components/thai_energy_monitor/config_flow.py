@@ -112,20 +112,11 @@ class ThaiEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Get the options flow handler for dynamic reconfiguration."""
-        return ThaiEnergyOptionsFlowHandler(config_entry)
+        return ThaiEnergyOptionsFlowHandler()
 
 
 class ThaiEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Thailand Energy & Solar Monitor."""
-
-    @property
-    def config_entry(self) -> config_entries.ConfigEntry:
-        """Return current config entry across HA versions."""
-        if hasattr(self, "_config_entry") and self._config_entry is not None:
-            return self._config_entry
-        if hasattr(self, "config_entry") and self.config_entry is not None:
-            return self.config_entry
-        return super().config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

@@ -154,7 +154,7 @@ configure_bess:
   name: Configure BESS Battery Storage
   description: Configure battery capacity, capex cost, grid charging, and tariff simulation models.
   fields:
-    bess_capacity_kwh:
+    battery_capacity:
       name: Battery Storage Capacity (kWh)
       description: "Usable battery storage capacity in kWh."
       required: true
@@ -165,7 +165,7 @@ configure_bess:
           max: 100.0
           step: "any"
           mode: box
-    bess_capex_cost:
+    capex_cost:
       name: Battery CAPEX Cost (THB)
       description: "Total capital expenditure cost for battery installation."
       required: true
@@ -176,14 +176,14 @@ configure_bess:
           max: 1000000.0
           step: "any"
           mode: box
-    bess_grid_charging:
+    grid_charging:
       name: Enable Grid Charging
       description: "Allow battery to charge from grid during off-peak hours."
       required: false
       example: false
       selector:
         boolean: {}
-    bess_tariff_model:
+    tariff_model:
       name: Battery Tariff Model
       description: "Tariff optimization strategy for battery simulation."
       required: false
@@ -193,12 +193,19 @@ configure_bess:
           options:
             - "tou"
             - "normal"
+    solar_sellback_active:
+      name: Enable Solar Sellback
+      description: "Include solar export sellback revenue in the battery simulation."
+      required: false
+      example: true
+      selector:
+        boolean: {}
 
-calculate_bess_lookback:
+trigger_bess_lookback:
   name: Run 12-Month BESS Battery Simulation
   description: Performs a detailed 365-day historical simulation of battery energy storage shifting.
 
-calculate_12_month_lookback:
+trigger_12_month_lookback:
   name: Run 12-Month Tariff Comparison Lookback
   description: Compares 12 months of historical energy consumption under progressive vs. TOU tariffs.
 
